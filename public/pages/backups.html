@@ -1,0 +1,38 @@
+<div class="flex flex-col h-full gap-4">
+    
+    <div class="bg-gray-800 p-4 rounded-xl border-l-4 border-yellow-500 shadow-lg flex justify-between items-center">
+        <div>
+            <h2 class="text-xl font-bold text-gray-200">Yedekleme Merkezi</h2>
+            <p class="text-xs text-gray-400">Sunucu verilerini kaydet, indir veya geri yükle.</p>
+        </div>
+        <button id="btn-create-backup" class="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-2 rounded-lg font-bold text-sm transition-all shadow-lg shadow-yellow-900/20 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+            </svg>
+            YENİ YEDEK AL
+        </button>
+    </div>
+
+    <div class="flex-1 bg-[#0f111a] rounded-xl border border-gray-800 overflow-y-auto">
+        <table class="w-full text-left border-collapse">
+            <thead class="bg-gray-800 sticky top-0 shadow-md">
+                <tr>
+                    <th class="p-3 text-xs text-gray-400 font-bold tracking-wider">DOSYA ADI</th>
+                    <th class="p-3 text-xs text-gray-400 font-bold tracking-wider w-32">TARİH</th>
+                    <th class="p-3 text-xs text-gray-400 font-bold tracking-wider w-24">BOYUT</th>
+                    <th class="p-3 text-xs text-gray-400 font-bold tracking-wider w-40 text-right">İŞLEMLER</th>
+                </tr>
+            </thead>
+            <tbody id="backup-list-body" class="text-sm text-gray-300 font-mono divide-y divide-gray-800">
+                <tr><td colspan="4" class="p-4 text-center text-gray-500">Yedekler yükleniyor...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="backup-loading" class="fixed inset-0 bg-black/80 z-50 hidden flex flex-col items-center justify-center">
+        <div class="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <p class="text-yellow-500 font-bold text-lg animate-pulse">İşlem Yapılıyor...</p>
+        <p class="text-gray-400 text-sm">Lütfen bekleyin, bu işlem dosya boyutuna göre sürebilir.</p>
+    </div>
+
+</div>

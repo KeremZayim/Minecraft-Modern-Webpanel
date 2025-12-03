@@ -1,0 +1,33 @@
+# --- Bağımlılıklar (İnternetten indirilir, yükleme) ---
+node_modules/
+
+# --- Kişisel Ayar Dosyaları (Sana özel, başkası görmemeli) ---
+config.json
+discord-config.json
+schedules.json
+
+# --- Veri ve Kayıt Dosyaları (Sürekli değişir, yükleme) ---
+audit.json
+backups/
+clean/
+logs/
+*.log
+npm-debug.log
+
+# --- Sistem Dosyaları (Gereksiz) ---
+.DS_Store
+Thumbs.db
+
+# --- Güvenlik Önlemi (Yanlışlıkla buraya atarsan diye) ---
+server.jar
+server.properties
+world/
+world_nether/
+world_the_end/
+banned-players.json
+banned-ips.json
+ops.json
+whitelist.json
+usercache.json
+crash-reports/
+plugins/

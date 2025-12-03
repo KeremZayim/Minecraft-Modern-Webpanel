@@ -1,0 +1,11 @@
+<div class="flex flex-col h-full gap-4">
+    <div class="bg-gray-800 p-4 rounded-xl border-l-4 border-pink-500 shadow-lg flex justify-between items-center">
+        <div><h2 class="text-xl font-bold text-gray-200">Eklentiler (Plugins)</h2><p class="text-xs text-gray-400">Sunucu eklentilerini yönet.</p></div>
+        <label class="bg-pink-600 hover:bg-pink-700 text-white px-4 py-2 rounded-lg font-bold text-xs cursor-pointer">
+            YÜKLE <input type="file" id="plugin-upload-input" class="hidden" accept=".jar" multiple>
+        </label>
+    </div>
+    <div class="flex-1 bg-[#0f111a] rounded-xl border border-gray-800 overflow-y-auto">
+        <table class="w-full text-left border-collapse"><tbody id="plugin-list-body" class="text-sm text-gray-300"></tbody></table>
+    </div>
+</div>

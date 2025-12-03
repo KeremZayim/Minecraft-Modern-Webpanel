@@ -1,0 +1,83 @@
+<div class="flex flex-col h-full gap-4 relative">
+    
+    <div class="bg-gray-800 p-4 rounded-xl border-l-4 border-indigo-500 shadow-lg flex justify-between items-center">
+        <div>
+            <h2 class="text-xl font-bold text-gray-200">Denetim Kayıtları</h2>
+            <p class="text-xs text-gray-400">Sistem üzerindeki işlem geçmişi.</p>
+        </div>
+        
+        <button id="btn-open-export-modal" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition shadow-lg hover:scale-105">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4-4m0 0l-4-4m4 4v12" />
+            </svg>
+            EXCEL DIŞA AKTAR
+        </button>
+    </div>
+
+    <div class="flex-1 bg-[#0f111a] rounded-xl border border-gray-800 overflow-y-auto relative">
+        <table class="w-full text-left border-collapse">
+            <thead class="bg-gray-800 sticky top-0 shadow-md z-10">
+                <tr>
+                    <th class="p-3 text-xs text-gray-400 font-bold w-40">ZAMAN</th>
+                    <th class="p-3 text-xs text-gray-400 font-bold w-32">KAYNAK</th>
+                    <th class="p-3 text-xs text-gray-400 font-bold">İŞLEM DETAYI</th>
+                </tr>
+            </thead>
+            <tbody id="audit-list-body" class="text-sm text-gray-300 font-mono divide-y divide-gray-800">
+                </tbody>
+        </table>
+    </div>
+
+    <div class="flex justify-end items-center gap-4 bg-gray-800 p-3 rounded-xl border border-gray-700 shadow-lg">
+        
+        <div class="flex items-center gap-2 text-xs text-gray-400">
+            <span>Sayfa Başına:</span>
+            <select id="audit-limit" class="bg-black border border-gray-600 rounded px-2 py-1 text-white outline-none focus:border-indigo-500 cursor-pointer">
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+                <option value="all">Tümü</option>
+            </select>
+        </div>
+
+        <div class="h-4 w-px bg-gray-600"></div>
+
+        <div class="flex items-center gap-2">
+            <button id="audit-prev-btn" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            
+            <span id="audit-page-info" class="text-xs font-bold text-indigo-400 min-w-[60px] text-center">1 / 1</span>
+            
+            <button id="audit-next-btn" class="p-1 rounded hover:bg-gray-700 text-gray-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+            </button>
+        </div>
+    </div>
+
+    <div id="export-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-gray-900 w-full max-w-sm rounded-xl border border-gray-700 p-6 shadow-2xl transform transition-all scale-100">
+            <h3 class="text-lg font-bold text-white mb-1">Tarih Aralığı Seç</h3>
+            <p class="text-xs text-gray-500 mb-4">Hangi tarih aralığındaki kayıtları indirmek istersiniz?</p>
+            
+            <div class="space-y-3 mb-6">
+                <div>
+                    <label class="text-xs text-gray-400 block mb-1">Başlangıç Tarihi</label>
+                    <input type="date" id="export-start-date" class="w-full bg-black border border-gray-600 rounded p-2 text-white text-sm outline-none focus:border-green-500">
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 block mb-1">Bitiş Tarihi</label>
+                    <input type="date" id="export-end-date" class="w-full bg-black border border-gray-600 rounded p-2 text-white text-sm outline-none focus:border-green-500">
+                </div>
+            </div>
+
+            <div class="flex gap-3">
+                <button id="btn-confirm-export" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold text-sm transition">İNDİR</button>
+                <button id="btn-close-export" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg font-bold text-sm transition">İPTAL</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>

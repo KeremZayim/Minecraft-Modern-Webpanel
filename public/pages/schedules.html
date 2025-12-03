@@ -1,0 +1,71 @@
+<div class="flex flex-col h-full gap-4">
+    <div class="bg-gray-800 p-4 rounded-xl border-l-4 border-cyan-500 shadow-lg flex justify-between items-center">
+        <div>
+            <h2 class="text-xl font-bold text-gray-200">Zamanlayıcı</h2>
+            <p class="text-xs text-gray-400">Otomatik görevler oluştur.</p>
+        </div>
+        <button id="btn-add-schedule" class="bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            YENİ GÖREV
+        </button>
+    </div>
+    
+    <div id="schedules-list" class="flex-1 overflow-y-auto space-y-2 pr-1">
+        </div>
+</div>
+
+<div id="schedule-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-gray-900 w-full max-w-md rounded-xl border border-gray-700 p-6 shadow-2xl">
+        <h3 class="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <span class="text-cyan-500">⏱</span> Görev Oluştur
+        </h3>
+        
+        <div class="mb-3">
+            <label class="text-xs text-gray-400 mb-1 block">Görev Adı</label>
+            <input type="text" id="sch-name" class="w-full bg-black border border-gray-600 rounded p-2 text-white text-sm focus:border-cyan-500 outline-none" placeholder="Örn: Otomatik Kayıt">
+        </div>
+
+        <div class="mb-3">
+            <label class="text-xs text-gray-400 mb-1 block">İşlem</label>
+            <select id="sch-action" class="w-full bg-black border border-gray-600 rounded p-2 text-white text-sm focus:border-cyan-500 outline-none">
+                <option value="command">Komut Gönder</option>
+                <option value="restart">Sunucuyu Yeniden Başlat</option>
+                <option value="stop">Sunucuyu Durdur</option>
+            </select>
+        </div>
+
+        <div class="mb-3">
+            <label class="text-xs text-gray-400 mb-1 block">Komut (Eğer işlem komut ise)</label>
+            <input type="text" id="sch-payload" class="w-full bg-black border border-gray-600 rounded p-2 text-white text-sm focus:border-cyan-500 outline-none" placeholder="Örn: say Merhaba Dunya">
+        </div>
+
+        <hr class="border-gray-700 my-4">
+
+        <div class="mb-4">
+            <label class="text-xs text-cyan-400 font-bold mb-2 block uppercase tracking-wide">Zamanlama Ayarı</label>
+            
+            <select id="sch-type" class="w-full bg-gray-800 border border-gray-600 rounded p-2 mb-3 text-white text-sm focus:border-cyan-500 outline-none">
+                <option value="interval">🔁 Belirli Aralıklarla (Tekrarla)</option>
+                <option value="fixed">⏰ Günün Belirli Saatinde (Sabit)</option>
+            </select>
+
+            <div id="input-interval-group">
+                <label class="text-xs text-gray-400 mb-1 block">Kaç dakikada bir çalışsın?</label>
+                <div class="flex items-center gap-2">
+                    <input type="number" id="sch-interval-min" class="flex-1 bg-black border border-gray-600 rounded p-2 text-white text-sm focus:border-cyan-500 outline-none" placeholder="10" min="1">
+                    <span class="text-sm text-gray-400">Dakika</span>
+                </div>
+            </div>
+
+            <div id="input-time-group" class="hidden">
+                <label class="text-xs text-gray-400 mb-1 block">Her gün saat kaçta çalışsın?</label>
+                <input type="time" id="sch-fixed-time" class="w-full bg-black border border-gray-600 rounded p-2 text-white text-sm focus:border-cyan-500 outline-none">
+            </div>
+        </div>
+
+        <div class="flex gap-2 mt-6">
+            <button id="sch-save" class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold transition">KAYDET</button>
+            <button id="sch-cancel" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg font-bold transition">İPTAL</button>
+        </div>
+    </div>
+</div>

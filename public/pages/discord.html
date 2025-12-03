@@ -1,0 +1,60 @@
+<div class="flex flex-col h-full gap-4">
+    <div class="bg-gray-800 p-4 rounded-xl border-l-4 border-indigo-600 shadow-lg">
+        <h2 class="text-xl font-bold text-gray-200">Discord Gelişmiş Entegrasyon</h2>
+        <p class="text-xs text-gray-400">Sunucu trafiğini farklı kanallara yönlendir.</p>
+    </div>
+    
+    <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 overflow-y-auto">
+        
+        <div class="mb-6">
+            <label class="block text-xs font-bold text-indigo-400 uppercase mb-2 tracking-widest">💬 SOHBET (CHAT) WEBHOOK</label>
+            <input type="text" id="discord-url-chat" class="w-full bg-black border border-gray-600 rounded p-3 text-white text-sm focus:border-indigo-500 outline-none transition" placeholder="https://discord.com/api/webhooks/...">
+            <p class="text-[10px] text-gray-500 mt-1">Oyuncu mesajları bu kanala gider.</p>
+        </div>
+
+        <div class="mb-6">
+            <label class="block text-xs font-bold text-orange-400 uppercase mb-2 tracking-widest">🔔 OLAYLAR (EVENTS) WEBHOOK</label>
+            <input type="text" id="discord-url-events" class="w-full bg-black border border-gray-600 rounded p-3 text-white text-sm focus:border-orange-500 outline-none transition" placeholder="https://discord.com/api/webhooks/...">
+            <p class="text-[10px] text-gray-500 mt-1">Giriş/Çıkış, Başlatma/Durdurma, Ölüm ve Başarımlar buraya gider.</p>
+        </div>
+
+        <div class="mb-8">
+            <label class="block text-xs font-bold text-red-400 uppercase mb-2 tracking-widest">🛡️ YÖNETİM (ADMIN) WEBHOOK</label>
+            <input type="text" id="discord-url-admin" class="w-full bg-black border border-gray-600 rounded p-3 text-white text-sm focus:border-red-500 outline-none transition" placeholder="https://discord.com/api/webhooks/...">
+            <p class="text-[10px] text-gray-500 mt-1">Kick, Ban, Op verme gibi yetkili işlemleri buraya loglanır.</p>
+        </div>
+
+        <h3 class="text-xs font-bold text-gray-400 uppercase mb-3 border-t border-gray-700 pt-4">DETAYLI FİLTRELEME</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <label class="flex items-center gap-3 text-gray-300 cursor-pointer bg-gray-900 p-3 rounded border border-gray-700 hover:border-indigo-500 transition">
+                <input type="checkbox" id="discord-opt-chat" class="w-5 h-5 accent-indigo-500">
+                <span>Sohbeti Gönder</span>
+            </label>
+            <label class="flex items-center gap-3 text-gray-300 cursor-pointer bg-gray-900 p-3 rounded border border-gray-700 hover:border-orange-500 transition">
+                <input type="checkbox" id="discord-opt-joins" class="w-5 h-5 accent-orange-500">
+                <span>Giriş / Çıkışları Gönder</span>
+            </label>
+            <label class="flex items-center gap-3 text-gray-300 cursor-pointer bg-gray-900 p-3 rounded border border-gray-700 hover:border-orange-500 transition">
+                <input type="checkbox" id="discord-opt-status" class="w-5 h-5 accent-orange-500">
+                <span>Başlatma / Durdurmayı Gönder</span>
+            </label>
+            <label class="flex items-center gap-3 text-gray-300 cursor-pointer bg-gray-900 p-3 rounded border border-gray-700 hover:border-orange-500 transition">
+                <input type="checkbox" id="discord-opt-deaths" class="w-5 h-5 accent-orange-500">
+                <span>Ölüm Mesajlarını Gönder</span>
+            </label>
+            <label class="flex items-center gap-3 text-gray-300 cursor-pointer bg-gray-900 p-3 rounded border border-gray-700 hover:border-orange-500 transition">
+                <input type="checkbox" id="discord-opt-advancements" class="w-5 h-5 accent-orange-500">
+                <span>Başarımları (Adv.) Gönder</span>
+            </label>
+            <label class="flex items-center gap-3 text-gray-300 cursor-pointer bg-gray-900 p-3 rounded border border-gray-700 hover:border-red-500 transition">
+                <input type="checkbox" id="discord-opt-admin" class="w-5 h-5 accent-red-500">
+                <span>Admin İşlemlerini Gönder</span>
+            </label>
+        </div>
+
+        <button id="btn-save-discord" class="bg-indigo-600 hover:bg-indigo-700 text-white w-full py-3 rounded-lg font-bold text-sm transition shadow-lg shadow-indigo-900/20">
+            AYARLARI KAYDET
+        </button>
+    </div>
+</div>

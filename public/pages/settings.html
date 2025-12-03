@@ -1,0 +1,99 @@
+<div class="flex flex-col h-full gap-6 overflow-y-auto pr-2 relative">
+    
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg flex flex-col items-center gap-4">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest self-start">SUNUCU İKONU</h3>
+            <div class="relative group">
+                <img id="server-icon-preview" src="/server-icon.png" onerror="this.src='https://via.placeholder.com/64?text=MC'" 
+                    class="w-24 h-24 rounded-lg shadow-2xl border-4 border-gray-700 group-hover:border-purple-500 transition-colors object-cover bg-gray-900">
+                <label class="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-lg cursor-pointer">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    <input type="file" id="icon-upload" class="hidden" accept="image/png">
+                </label>
+            </div>
+            <div class="flex gap-2 w-full">
+                <button onclick="document.getElementById('icon-upload').click()" class="flex-1 bg-gray-700 hover:bg-gray-600 text-xs text-white py-2 rounded transition">DEĞİŞTİR</button>
+                <button id="btn-delete-icon" class="bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white px-3 rounded transition"><svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg></button>
+            </div>
+        </div>
+
+        <div class="md:col-span-2 bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg flex flex-col gap-4">
+            <h3 class="text-xs font-bold text-gray-400 uppercase tracking-widest">TEMEL BİLGİLER</h3>
+            <div><label class="block text-sm text-gray-300 mb-1">Sunucu Açıklaması (MOTD)</label><input type="text" id="set-motd" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-purple-500 outline-none"></div>
+            <div class="grid grid-cols-2 gap-4">
+                <div><label class="block text-sm text-gray-300 mb-1">Maksimum Oyuncu</label><input type="number" id="set-max-players" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-purple-500 outline-none"></div>
+                <div><label class="block text-sm text-gray-300 mb-1">Spawn Koruması</label><input type="number" id="set-spawn-protection" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-purple-500 outline-none"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-5 rounded-xl border-l-4 border-blue-500 shadow-lg">
+        <h3 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">PERFORMANS</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+                <label class="block text-sm text-gray-300 mb-1">Maksimum RAM (Min: 4GB Sabit)</label>
+                <div class="flex items-center gap-3">
+                    <input type="range" id="set-ram-slider" min="6" max="24" step="1" class="flex-1 accent-blue-500">
+                    <span id="set-ram-display" class="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold w-12 text-center">6G</span>
+                </div>
+            </div>
+            <div><label class="block text-sm text-gray-300 mb-1">Sunucu Portu</label><input type="number" id="set-server-port" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none"></div>
+            <div><label class="block text-sm text-gray-300 mb-1">Görüş Mesafesi</label><input type="number" id="set-view-distance" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none"></div>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-5 rounded-xl border-l-4 border-green-500 shadow-lg">
+        <h3 class="text-xs font-bold text-green-400 uppercase tracking-widest mb-4">OYUN KURALLARI</h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div><label class="block text-sm text-gray-300 mb-1">Oyun Modu</label><select id="set-gamemode" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-green-500 outline-none"><option value="survival">Hayatta Kalma</option><option value="creative">Yaratıcı</option><option value="adventure">Macera</option><option value="spectator">İzleyici</option></select></div>
+            <div><label class="block text-sm text-gray-300 mb-1">Zorluk</label><select id="set-difficulty" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-green-500 outline-none"><option value="peaceful">Barışçıl</option><option value="easy">Kolay</option><option value="normal">Normal</option><option value="hard">Zor</option></select></div>
+            <div class="flex items-center justify-between bg-gray-900 p-3 rounded border border-gray-700"><span class="text-sm text-gray-300">PVP</span><input type="checkbox" id="set-pvp" class="w-5 h-5 accent-green-500"></div>
+            <div class="flex items-center justify-between bg-gray-900 p-3 rounded border border-gray-700"><span class="text-sm text-gray-300">Uçuş</span><input type="checkbox" id="set-allow-flight" class="w-5 h-5 accent-green-500"></div>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-5 rounded-xl border-l-4 border-red-500 shadow-lg mb-4">
+        <h3 class="text-xs font-bold text-red-400 uppercase tracking-widest mb-4">GÜVENLİK</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="flex items-center justify-between bg-gray-900 p-3 rounded border border-gray-700">
+                <div><span class="block text-sm text-gray-200">Online Mode</span><span class="text-[10px] text-gray-500">Crack Koruması</span></div>
+                <input type="checkbox" id="set-online-mode" class="w-5 h-5 accent-red-500">
+            </div>
+
+            <div class="flex items-center justify-between bg-gray-900 p-3 rounded border border-gray-700">
+                <div><span class="block text-sm text-gray-200">White List</span><span class="text-[10px] text-gray-500">Giriş izni yönetimi</span></div>
+                <div class="flex items-center gap-3">
+                    <button id="btn-manage-whitelist" class="text-xs bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded transition">YÖNET</button>
+                    <input type="checkbox" id="set-white-list" class="w-5 h-5 accent-red-500">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button id="btn-save-settings" class="sticky bottom-4 bg-purple-600 hover:bg-purple-700 text-white w-full py-4 rounded-xl shadow-2xl font-bold tracking-widest transition-transform hover:scale-[1.01] active:scale-95 text-lg flex items-center justify-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+        AYARLARI KAYDET
+    </button>
+
+    <div id="whitelist-modal" class="fixed inset-0 bg-black/80 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-gray-900 w-full max-w-md rounded-xl shadow-2xl border border-gray-700 overflow-hidden">
+            <div class="bg-gray-800 p-4 border-b border-gray-700 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-white">Whitelist Yönetimi</h3>
+                <button id="close-whitelist-modal" class="text-gray-400 hover:text-white"><svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg></button>
+            </div>
+            
+            <div class="p-4 bg-gray-850">
+                <form id="whitelist-add-form" class="flex gap-2 mb-4">
+                    <input type="text" id="whitelist-input" class="flex-1 bg-black border border-gray-600 rounded px-3 py-2 text-white text-sm focus:border-blue-500 outline-none" placeholder="Oyuncu adı..." autocomplete="off">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded text-sm font-bold">EKLE</button>
+                </form>
+                
+                <div id="whitelist-container" class="h-64 overflow-y-auto space-y-2 pr-1">
+                    </div>
+            </div>
+        </div>
+    </div>
+
+</div>
