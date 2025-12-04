@@ -1,21 +1,44 @@
-MIT License
+Custom License
+1. Copyright and Related Rights
 
-Copyright (c) 2025 Kerem Zayim
+This software may be protected by copyright and related rights, including but not limited to the right to reproduce, adapt, distribute, perform, display, and create derivative works based on the software. These rights are retained by the original author(s) or copyright holder(s) unless explicitly waived as outlined in this license.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+2. No Commercial Use or Distribution
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The software is not permitted to be used for any commercial purposes. It cannot be sold, monetized, or distributed for commercial purposes. Any use of this software outside of personal, educational, or non-commercial open-source projects is strictly prohibited.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+3. Modification and Development
+
+You are allowed to modify, fork, and improve this software for non-commercial purposes only. You may not redistribute modified versions of the software. You may use this software for personal use, research, and development, but any modified versions of this software cannot be redistributed, sold, or used for commercial purposes.
+
+4. Attribution Requirement
+
+The original author, Kerem Zayim, must always be credited in any copy, modification, or redistribution of this software. This attribution must appear in all forms of the software, including the code, documentation, and any other related materials, both in the source code and in any associated user-facing materials.
+
+5. Distribution Restrictions
+
+You may not redistribute the software in a modified form. Any distribution of the software must be done in its original, unmodified state. The software may not be used for commercial distribution or as part of any commercial product.
+
+6. No Warranty
+
+This software is provided "as-is", without any express or implied warranties, including but not limited to warranties of merchantability, fitness for a particular purpose, or non-infringement. In no event shall the author(s) or copyright holder(s) be liable for any damages, loss of profits, or other liabilities arising from the use or inability to use the software.
+
+7. Limitation of Liability
+
+The author(s) disclaims any liability for any damages arising from the use of this software, including but not limited to any direct, indirect, incidental, special, or consequential damages, even if they have been advised of the possibility of such damages. This software is provided without any warranty of any kind, and all use is at the user's own risk.
+
+8. No Grant of Patent or Trademark Rights
+
+This license does not grant you any rights to use the trademarks or patents of the author(s) or contributors. All patent and trademark rights are explicitly reserved.
+
+9. Public License Fallback
+
+If any part of this license is found to be legally invalid or unenforceable, the remainder of the license shall continue in full effect. In such cases, the author(s) grant the user a royalty-free, non-transferable, non-sublicensable, non-exclusive, irrevocable, and unconditional license to use the software as permitted by the laws of the applicable jurisdiction.
+
+10. Creative Commons Disclaimer
+
+This software is not affiliated with Creative Commons, nor is it governed by any Creative Commons licenses or public domain tools. The use of this software is subject to the terms outlined in this custom license.
+
+11. Acknowledgement
+
+By using or distributing this software, you acknowledge and agree to the terms outlined in this license. This license is intended to protect the author’s interests while allowing for non-commercial use, modification, and development of the software.
