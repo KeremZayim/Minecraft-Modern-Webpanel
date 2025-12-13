@@ -1,8 +1,27 @@
-<div class="flex flex-col h-full gap-4">
-    <div class="bg-gray-800 p-4 rounded-xl border-l-4 border-pink-600 shadow-lg">
-        <h2 class="text-xl font-bold text-gray-200">Dünya Yöneticisi</h2>
-        <p class="text-xs text-gray-400">Haritaları yönet, nether'ı sıfırla.</p>
-    </div>
-    <div id="worlds-list" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="flex flex-col h-full gap-4 relative">
+    
+    <div class="bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-lg flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+            <h2 class="text-xl font-bold text-gray-200 flex items-center gap-2">
+                <span class="text-2xl">🌍</span> Dünya Yöneticisi
+            </h2>
+            <p class="text-xs text-gray-400">Sunucudaki dünyaları yönet, indir veya aktif et.</p>
         </div>
+        
+        <label class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg cursor-pointer transition font-bold text-sm flex items-center gap-2 shadow-lg shadow-indigo-900/20">
+            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+            <span>DÜNYA YÜKLE (.ZIP)</span>
+            <input type="file" id="world-upload-input" accept=".zip" class="hidden">
+        </label>
+    </div>
+
+    <div id="world-upload-progress" class="hidden bg-gray-800 p-4 rounded-lg border border-indigo-500/50 flex items-center gap-3 animate-pulse">
+        <div class="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        <span class="text-indigo-300 text-sm font-bold">Dünya yükleniyor ve açılıyor, lütfen bekleyin...</span>
+    </div>
+
+    <div id="worlds-list" class="grid grid-cols-1 gap-3 overflow-y-auto pb-4">
+        <div class="text-center text-gray-500 py-10">Yükleniyor...</div>
+    </div>
+
 </div>

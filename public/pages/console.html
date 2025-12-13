@@ -35,11 +35,17 @@
         <div id="console-window" class="flex-1 p-4 overflow-y-auto console-font text-xs md:text-sm text-gray-300 font-mono space-y-1"></div>
     </div>
 
-    <form id="command-form" class="bg-gray-800 p-3 rounded-b-xl border border-t-0 border-gray-700 flex items-center gap-3 shadow-lg">
-        <span class="text-emerald-500 pl-2 select-none font-mono text-lg">&rsaquo;</span>
-        <input type="text" id="command-input" 
-            class="flex-1 bg-transparent text-white py-2 focus:outline-none placeholder-gray-500 font-mono text-sm" 
-            placeholder="Komut gönder..." autocomplete="off">
-        <button type="submit" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-1.5 rounded text-xs font-bold transition">GÖNDER</button>
-    </form>
+    <div class="bg-gray-900 border-t border-gray-800 p-2 relative"> <ul id="autocomplete-list" class="hidden absolute bottom-full left-0 mb-2 bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-64 max-h-40 overflow-y-auto z-50 text-sm">
+            </ul>
+
+        <form id="command-form" class="flex items-center gap-2">
+            <span class="text-emerald-500 font-bold pl-2">❯</span>
+            <input type="text" id="command-input" autocomplete="off" placeholder="Bir komut gönder..." 
+                class="w-full bg-transparent border-none text-gray-100 placeholder-gray-600 focus:ring-0 focus:outline-none py-3 pl-2 font-mono text-sm">
+            <button type="submit" class="absolute right-2 bg-gray-800 hover:bg-gray-700 text-gray-300 p-2 rounded-lg transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 transform rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+            </button>
+        </form>
+    </div>
+    
 </div>
