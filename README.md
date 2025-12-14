@@ -54,7 +54,7 @@ Bu proje, Minecraft sunucunuzu web tarayıcısı üzerinden **tam kapsamlı, mod
 
 1.  **Projeyi İndirin:**
     ```bash
-    git clone [https://github.com/KULLANICI_ADINIZ/REPO_ADINIZ.git](https://github.com/KULLANICI_ADINIZ/REPO_ADINIZ.git)
+    git clone <https://github.com/KULLANICI_ADINIZ/REPO_ADINIZ.git>
     ```
 2.  **Klasöre Girin ve Modülleri Yükleyin:**
     ```bash

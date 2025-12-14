@@ -90,6 +90,7 @@ const menuContainer = document.getElementById("sidebar-menu");
 const btnStart = document.getElementById("btn-start");
 const btnStop = document.getElementById("btn-stop");
 
+let currentAuditFilter = "panel";
 let storedLogs = [];
 let currentStatus = "offline";
 let currentPage = "dashboard";
@@ -112,6 +113,7 @@ const commonCommands = [
   "op",
   "deop",
   "gamemode",
+  "gamerule",
   "tp",
   "time set",
   "weather",
@@ -1035,10 +1037,39 @@ window.unban = (n) => socket.emit("unban-player", n);
 // 11.1-) initAuditPage
 function initAuditPage() {
   socket.emit("get-audit");
+
+  // --- YENİ FİLTRE BUTONLARI ---
+  const btnPanel = document.getElementById("btn-audit-filter-panel");
+  const btnGame = document.getElementById("btn-audit-filter-game");
+
+  const setFilter = (type) => {
+    currentAuditFilter = type;
+    auditPageIndex = 1;
+
+    // Buton stillerini güncelle
+    if (type === "panel") {
+      btnPanel.className =
+        "px-4 py-1.5 rounded-md text-xs font-bold transition bg-indigo-600 text-white shadow";
+      btnGame.className =
+        "px-4 py-1.5 rounded-md text-xs font-bold transition text-gray-400 hover:text-white hover:bg-gray-800";
+    } else {
+      btnPanel.className =
+        "px-4 py-1.5 rounded-md text-xs font-bold transition text-gray-400 hover:text-white hover:bg-gray-800";
+      btnGame.className =
+        "px-4 py-1.5 rounded-md text-xs font-bold transition bg-amber-600 text-white shadow";
+    }
+    renderAuditLogs();
+  };
+
+  if (btnPanel) btnPanel.onclick = () => setFilter("panel");
+  if (btnGame) btnGame.onclick = () => setFilter("game");
+  // -----------------------------
+
   const limitSel = document.getElementById("audit-limit");
   const btnPrev = document.getElementById("audit-prev-btn");
   const btnNext = document.getElementById("audit-next-btn");
 
+  // (Geri kalan export modal kodları aynı kalıyor...)
   const btnOpenModal = document.getElementById("btn-open-export-modal");
   const modal = document.getElementById("export-modal");
   const btnCloseModal = document.getElementById("btn-close-export");
@@ -1112,63 +1143,134 @@ function initAuditPage() {
   }
 }
 
-// 11.2-) renderAuditLogs
+// 11.2-) renderAuditLogs - (GÜNCELLENDİ: AÇILIR/KAPANIR DETAY)
 function renderAuditLogs() {
-  const tbody = document.getElementById("audit-list-body");
-  const pageInfo = document.getElementById("audit-page-info");
-  const btnPrev = document.getElementById("audit-prev-btn");
-  const btnNext = document.getElementById("audit-next-btn");
+    const tbody = document.getElementById("audit-list-body");
+    const pageInfo = document.getElementById("audit-page-info");
+    const btnPrev = document.getElementById("audit-prev-btn");
+    const btnNext = document.getElementById("audit-next-btn");
 
-  if (!tbody) return;
+    if (!tbody) return;
 
-  const totalItems = allAuditLogs.length;
-  const totalPages = Math.ceil(totalItems / auditPageSize) || 1;
+    // Filtreleme
+    const filteredLogs = allAuditLogs.filter(l => {
+        const logType = l.type || "panel"; 
+        return logType === currentAuditFilter;
+    });
 
-  if (auditPageIndex > totalPages) auditPageIndex = 1;
+    const totalItems = filteredLogs.length;
+    const totalPages = Math.ceil(totalItems / auditPageSize) || 1;
 
-  const startIdx = (auditPageIndex - 1) * auditPageSize;
-  const endIdx = startIdx + auditPageSize;
-  const displayLogs = allAuditLogs.slice(startIdx, endIdx);
+    if (auditPageIndex > totalPages) auditPageIndex = 1;
 
-  tbody.innerHTML = "";
+    const startIdx = (auditPageIndex - 1) * auditPageSize;
+    const endIdx = startIdx + auditPageSize;
+    const displayLogs = filteredLogs.slice(startIdx, endIdx);
 
-  if (displayLogs.length === 0) {
-    tbody.innerHTML =
-      '<tr><td colspan="3" class="p-4 text-center text-gray-500">Kayıt yok.</td></tr>';
-  } else {
-    displayLogs.forEach((l) => {
-      const tr = document.createElement("tr");
-      tr.className = "border-b border-gray-800 hover:bg-gray-700/30";
-      tr.innerHTML = `
-                <td class="p-3 text-gray-400 font-mono text-xs">${l.time}</td>
-                <td class="p-3 text-indigo-400 text-xs font-bold">${l.source}</td>
-                <td class="p-3 text-gray-300 text-sm">
-                    <span class="font-bold text-gray-400 mr-1">[${l.action}]</span>
-                    ${l.details}
+    tbody.innerHTML = "";
+
+    if (displayLogs.length === 0) {
+        tbody.innerHTML =
+            '<tr><td colspan="3" class="p-4 text-center text-gray-500">Bu kategoride kayıt yok.</td></tr>';
+    } else {
+        displayLogs.forEach((l, index) => {
+            // Benzersiz ID oluştur (toggle için)
+            const detailRowId = `audit-detail-${index}`;
+            
+            // Logun içinde HTML listesi var mı diye bak (<ul> etiketi varsa detaylıdır)
+            const hasDetails = l.details && l.details.includes("<ul");
+            const cursorClass = hasDetails ? "cursor-pointer hover:bg-gray-700" : "hover:bg-gray-700/50";
+            const expandIcon = hasDetails ? '<span class="text-[10px] text-gray-500 ml-2">▼</span>' : '';
+
+            // --- ANA SATIR ---
+            const tr = document.createElement("tr");
+            tr.className = `border-b border-gray-800 transition ${cursorClass}`;
+            
+            // Renk Ayarı
+            let sourceColor = "text-indigo-400";
+            if (l.type === "game") sourceColor = "text-amber-400";
+
+            // Özet Metin (Eğer detaylı liste varsa, tabloda sadece "Detaylar için tıklayın" yazsın veya başlığı yazsın)
+            // Eğer basit bir log ise direkt kendisini yazsın.
+            let summaryText = l.details;
+            if(hasDetails) {
+                summaryText = '<span class="text-blue-400 font-bold text-xs italic">Detayları görmek için tıklayın...</span>';
+            }
+
+            tr.innerHTML = `
+                <td class="p-3 text-gray-400 font-mono text-xs whitespace-nowrap align-top">${l.time}</td>
+                <td class="p-3 ${sourceColor} text-xs font-bold font-mono tracking-wide align-top">
+                    ${l.type === 'game' ? '👤 ' : ''}${l.source}
+                </td>
+                <td class="p-3 text-gray-300 text-sm break-all align-top">
+                    <div class="flex items-center">
+                        <span class="font-bold text-gray-500 mr-2 text-xs bg-gray-800 px-1.5 py-0.5 rounded border border-gray-700">[${l.action}]</span>
+                        <span>${summaryText}</span>
+                        ${expandIcon}
+                    </div>
                 </td>
             `;
-      tbody.appendChild(tr);
-    });
-  }
 
-  if (pageInfo) pageInfo.textContent = `${auditPageIndex} / ${totalPages}`;
-  if (btnPrev) btnPrev.disabled = auditPageIndex === 1;
-  if (btnNext)
-    btnNext.disabled = auditPageIndex === totalPages || totalPages === 0;
+            // Tıklama Olayı (Sadece detay varsa)
+            if (hasDetails) {
+                tr.onclick = () => {
+                    const detailRow = document.getElementById(detailRowId);
+                    if (detailRow) {
+                        detailRow.classList.toggle("hidden");
+                        // Arka plan rengini değiştirerek seçili olduğunu belli et
+                        if(!detailRow.classList.contains("hidden")){
+                            tr.classList.add("bg-gray-800");
+                        } else {
+                            tr.classList.remove("bg-gray-800");
+                        }
+                    }
+                };
+            }
+            tbody.appendChild(tr);
+
+            // --- DETAY SATIRI (GİZLİ) ---
+            if (hasDetails) {
+                const trDetail = document.createElement("tr");
+                trDetail.id = detailRowId;
+                trDetail.className = "hidden bg-gray-900/50 border-b border-gray-800 shadow-inner";
+                trDetail.innerHTML = `
+                    <td colspan="3" class="p-4 pl-12">
+                        <div class="bg-gray-800 rounded p-3 border border-gray-700">
+                            <h4 class="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">Değişiklik Raporu:</h4>
+                            ${l.details} </div>
+                    </td>
+                `;
+                tbody.appendChild(trDetail);
+            }
+        });
+    }
+
+    if (pageInfo) pageInfo.textContent = `${auditPageIndex} / ${totalPages}`;
+    if (btnPrev) btnPrev.disabled = auditPageIndex === 1;
+    if (btnNext) btnNext.disabled = auditPageIndex === totalPages || totalPages === 0;
 }
 
 function changeAuditPage(dir) {
-  const totalPages = Math.ceil(allAuditLogs.length / auditPageSize);
-  const newPage = auditPageIndex + dir;
-  if (newPage > 0 && newPage <= totalPages) {
-    auditPageIndex = newPage;
-    renderAuditLogs();
-  }
+    // Mevcut filtreye göre toplam sayfa sayısını hesapla
+    const filteredLogs = allAuditLogs.filter(l => {
+        const logType = l.type || "panel";
+        return logType === currentAuditFilter;
+    });
+    
+    const totalPages = Math.ceil(filteredLogs.length / auditPageSize) || 1;
+    const newPage = auditPageIndex + dir;
+
+    if (newPage > 0 && newPage <= totalPages) {
+        auditPageIndex = newPage;
+        renderAuditLogs();
+    }
 }
 
 function updateAuditList(list) {
-  allAuditLogs = list;
-  renderAuditLogs();
+    allAuditLogs = list;
+    // Yeni veri geldiğinde sayfa 1'e dönmek istersen:
+    // auditPageIndex = 1; 
+    renderAuditLogs();
 }
 
 // ============================================================================
@@ -1346,23 +1448,66 @@ window.deleteWorld = (n) => {
 // 14-) AYARLAR VE YÖNETİCİLER (SETTINGS & OPS)
 // ============================================================================
 // 14.1-) initSettingsPage
+// ============================================================================
+// app.js -> initSettingsPage (OTOMATİK 64x64 DÖNÜŞTÜRME EKLENDİ)
+// ============================================================================
+
 function initSettingsPage() {
+  // 1. Mevcut ayarları iste
   socket.emit("get-settings");
 
-  // Elementleri seç
+  // 2. [DÜZELTME] Sistem RAM bilgisini özellikle iste (Tetikleyici)
+  socket.emit("get-system-info");
+
   const ramSlider = document.getElementById("set-ram-slider");
   const ramDisplay = document.getElementById("set-ram-display");
-  const s = document.getElementById("btn-save-settings");
+  const ramMaxLabel = document.getElementById("ram-max-label"); 
+  const btnSave = document.getElementById("btn-save-settings");
 
-  // [DÜZELTME] Slider hareket ettikçe sayıyı güncelle
+  // A) Varsayılan Durum (Cevap gelene kadar)
+  if(ramSlider) {
+      ramSlider.max = 8; // İsteğin üzerine geçici max 8
+      if(parseInt(ramSlider.value) > 8) ramSlider.value = 8;
+  }
+  if(ramMaxLabel) ramMaxLabel.textContent = "(Hesaplanıyor...)";
+
+  // B) Slider Görsel Güncelleme
   if (ramSlider && ramDisplay) {
     ramSlider.oninput = () => {
       ramDisplay.textContent = `${ramSlider.value}G`;
     };
   }
 
-  if (s)
-    s.onclick = () => {
+  // C) [DÜZELTME] Backend'den RAM bilgisi gelince çalışacak kısım
+  // Önce eski dinleyiciyi kapatıyoruz ki üst üste binmesin
+  socket.off("sistem-bilgileri"); 
+  socket.on("sistem-bilgileri", (data) => {
+      if(ramSlider) {
+          // Yeni maksimum değeri ata
+          ramSlider.max = data.maxSlider;
+          ramSlider.min = 4;
+          
+          // Eğer önceden seçili RAM (örn: 12GB), yeni limitten (örn: 8GB) büyükse düşür.
+          if(parseInt(ramSlider.value) > data.maxSlider) {
+              ramSlider.value = data.maxSlider;
+              ramDisplay.textContent = `${data.maxSlider}G`;
+          }
+
+          // Label'ı güncelle
+          if(ramMaxLabel) {
+              ramMaxLabel.textContent = `(Sistem Limiti: ${data.maxSlider} GB)`;
+              // Görsel olarak da hesaplandığını belli etmek için rengi değiştir
+              ramMaxLabel.classList.remove("text-gray-500");
+              ramMaxLabel.classList.add("text-green-400");
+          }
+      }
+  });
+
+  // D) Kaydet Butonu ve Diğerleri (Aynı kalıyor)
+  if (btnSave) {
+    btnSave.onclick = () => {
+      btnSave.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> KAYDEDİLİYOR...`;
+
       const d = {
         ram: document.getElementById("set-ram-slider").value,
         props: {
@@ -1370,8 +1515,7 @@ function initSettingsPage() {
           "max-players": document.getElementById("set-max-players").value,
           "server-port": document.getElementById("set-server-port").value,
           "view-distance": document.getElementById("set-view-distance").value,
-          "spawn-protection": document.getElementById("set-spawn-protection")
-            .value,
+          "spawn-protection": document.getElementById("set-spawn-protection").value,
           gamemode: document.getElementById("set-gamemode").value,
           difficulty: document.getElementById("set-difficulty").value,
           pvp: document.getElementById("set-pvp").checked,
@@ -1381,7 +1525,163 @@ function initSettingsPage() {
         },
       };
       socket.emit("save-settings", d);
+
+      setTimeout(() => {
+        btnSave.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> AYARLARI KAYDET`;
+      }, 1000);
     };
+  }
+
+  // ---------------------------------------------------------
+  // 2. SUNUCU İKONU YÜKLEME (OTOMATİK RESİZE)
+  // ---------------------------------------------------------
+  const iconInput = document.getElementById("icon-upload");
+  const iconPreview = document.getElementById("server-icon-preview");
+  const btnDeleteIcon = document.getElementById("btn-delete-icon");
+
+  // Mevcut ikonu göster
+  if (iconPreview) {
+    iconPreview.src = `/server-icon.png?t=${Date.now()}`;
+    iconPreview.onerror = () => {
+      iconPreview.src = "https://via.placeholder.com/64?text=MC";
+    };
+  }
+
+  if (iconInput) {
+    iconInput.onchange = async () => {
+      const file = iconInput.files[0];
+      if (!file) return;
+
+      // Dosya türü kontrolü (Genişletildi: JPG, PNG, WEBP kabul edelim, sonra PNG'ye çevireceğiz)
+      if (!file.type.match("image.*")) {
+        alert("Lütfen geçerli bir resim dosyası seçin!");
+        return;
+      }
+
+      // UI: Yükleniyor efekti
+      if (iconPreview) iconPreview.style.opacity = "0.3";
+
+      // --- RESİZE İŞLEMİ (CANVAS API) ---
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+
+      reader.onload = (readerEvent) => {
+        const img = new Image();
+        img.src = readerEvent.target.result;
+
+        img.onload = () => {
+          // 1. Sanal bir canvas oluştur
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+
+          // 2. Minecraft standardı: 64x64 piksel
+          canvas.width = 64;
+          canvas.height = 64;
+
+          // 3. Resmi 64x64 kutusuna sığdır (Stretch)
+          // İstersen aspect ratio korumalı da yapılabilir ama MC ikonları genelde kare olur.
+          ctx.drawImage(img, 0, 0, 64, 64);
+
+          // 4. Canvas'ı PNG Blob'una dönüştür
+          canvas.toBlob(async (blob) => {
+            if (!blob) {
+              alert("Dönüştürme hatası!");
+              if (iconPreview) iconPreview.style.opacity = "1";
+              return;
+            }
+
+            // 5. FormData oluştur ve sunucuya gönder
+            const fd = new FormData();
+            // 'server-icon.png' ismini zorluyoruz, sunucu bunu kullanacak
+            fd.append("icon", blob, "server-icon.png");
+
+            try {
+              const res = await fetch("/api/upload-icon", {
+                method: "POST",
+                body: fd,
+              });
+              const data = await res.json();
+
+              if (data.success) {
+                if (iconPreview) {
+                  // Cache kırmak için timestamp
+                  iconPreview.src = `/server-icon.png?t=${Date.now()}`;
+                  iconPreview.style.opacity = "1";
+                }
+                alert("✅ İkon 64x64 boyutuna dönüştürüldü ve yüklendi!");
+              } else {
+                alert("Hata: " + (data.error || "Sunucu hatası."));
+                if (iconPreview) iconPreview.style.opacity = "1";
+              }
+            } catch (e) {
+              console.error(e);
+              alert("Yükleme sırasında hata oluştu.");
+              if (iconPreview) iconPreview.style.opacity = "1";
+            }
+          }, "image/png"); // Çıktı formatı: PNG
+        };
+      };
+    };
+  }
+
+  // Silme İşlemi
+  if (btnDeleteIcon) {
+    btnDeleteIcon.onclick = async () => {
+      if (
+        !confirm(
+          "İkonu silmek istediğinize emin misiniz? Varsayılan MC ikonu görünecektir."
+        )
+      )
+        return;
+      try {
+        await fetch("/api/delete-icon", { method: "DELETE" });
+        if (iconPreview)
+          iconPreview.src = "https://via.placeholder.com/64?text=MC";
+        alert("İkon silindi.");
+      } catch (e) {
+        alert("Silinemedi.");
+      }
+    };
+  }
+
+  // ---------------------------------------------------------
+  // 3. WHITELIST MODAL YÖNETİMİ
+  // ---------------------------------------------------------
+  const btnManageWhitelist = document.getElementById("btn-manage-whitelist");
+  const modalWhitelist = document.getElementById("whitelist-modal");
+  const btnCloseWhitelist = document.getElementById("close-whitelist-modal");
+  const formWhitelist = document.getElementById("whitelist-add-form");
+  const inputWhitelist = document.getElementById("whitelist-input");
+
+  if (btnManageWhitelist) {
+    btnManageWhitelist.onclick = () => {
+      socket.emit("get-whitelist");
+      if (modalWhitelist) modalWhitelist.classList.remove("hidden");
+    };
+  }
+
+  if (btnCloseWhitelist) {
+    btnCloseWhitelist.onclick = () => {
+      if (modalWhitelist) modalWhitelist.classList.add("hidden");
+    };
+  }
+
+  if (modalWhitelist) {
+    modalWhitelist.onclick = (e) => {
+      if (e.target === modalWhitelist) modalWhitelist.classList.add("hidden");
+    };
+  }
+
+  if (formWhitelist) {
+    formWhitelist.onsubmit = (e) => {
+      e.preventDefault();
+      const name = inputWhitelist.value.trim();
+      if (name) {
+        socket.emit("whitelist-add", name);
+        inputWhitelist.value = "";
+      }
+    };
+  }
 }
 
 // 14.2-) initOpsPage

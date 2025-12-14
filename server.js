@@ -90,8 +90,9 @@ function getFolderSize(dirPath) {
   return (size / 1024 / 1024).toFixed(2) + " MB";
 }
 
-// 3.2-) logAudit
-function logAudit(action, details) {
+// 3.2-) logAudit - GÜNCELLENDİ (Type ve Source desteği eklendi)
+// Mevcut kullanımları bozmamak için varsayılan değerler ekledik.
+function logAudit(action, details, source = "Panel", type = "panel") {
   let audits = [];
   if (fs.existsSync(AUDIT_FILE))
     try {
@@ -100,13 +101,15 @@ function logAudit(action, details) {
 
   const newLog = {
     time: new Date().toLocaleString("tr-TR"),
-    source: "Panel",
+    source: source, // Artık dinamik (Panel veya Oyuncu Adı)
+    type: type, // 'panel' veya 'game'
     action: action,
     details: details,
   };
 
   audits.unshift(newLog);
-  if (audits.length > 100) audits.pop();
+  // Kayıt sayısını biraz artıralım, oyun logları çok olabilir.
+  if (audits.length > 500) audits.pop();
 
   fs.writeFileSync(AUDIT_FILE, JSON.stringify(audits, null, 2));
   io.emit("audit-data", audits);
@@ -271,6 +274,25 @@ function getSchedules() {
   } catch (e) {
     return [];
   }
+}
+
+// 3.15-) [YENİ] Sistem RAM Bilgisi Hesaplama
+function getSystemRamInfo() {
+    try {
+        const totalMemBytes = os.totalmem();
+        const totalMemGB = Math.floor(totalMemBytes / (1024 * 1024 * 1024));
+        
+        // Max slider = Toplam RAM - 4GB. Eğer sistem RAM'i azsa en az 4 dönsün.
+        const maxSliderValue = Math.max(4, totalMemGB - 4); 
+
+        return {
+            totalRam: totalMemGB,
+            maxSlider: maxSliderValue
+        };
+    } catch (e) {
+        // Hata olursa varsayılan 8 döndür
+        return { totalRam: 16, maxSlider: 12 };
+    }
 }
 
 // 4-) MULTER AYARLARI (DOSYA YÜKLEME)
@@ -838,7 +860,10 @@ function startServerFunc() {
   io.emit("status", "starting");
   const conf = getDiscordConfig();
   if (conf.optStatus) sendDiscord("🟢 Sunucu başlatılıyor...", "event");
+
+  // Panelden başlatıldığı için source="Panel", type="panel" (Varsayılanlar)
   logAudit("Sunucu", "Sunucu başlatıldı.");
+
   onlinePlayers = [];
   correctPid = null;
   try {
@@ -853,10 +878,34 @@ function startServerFunc() {
       ],
       { cwd: MC_SERVER_PATH }
     );
+
+    // --- KONSOL ÇIKTILARINI DİNLEME ---
     mcProcess.stdout.on("data", (data) => {
       const line = data.toString();
       io.emit("console-out", line);
       const dConf = getDiscordConfig();
+
+      // [YENİ] OYUN İÇİ KOMUTLARI YAKALAMA VE AUDIT'E KAYDETME
+      if (line.includes("issued server command:")) {
+        try {
+          // Regex: ": <OyuncuAdı> issued server command: </komut>"
+          // Örnek Log: [12:00:00 INFO]: Kerem issued server command: /gamemode creative
+          const regex = /:\s(.*?)\sissued\sserver\scommand:\s(\/.*)/;
+          const match = line.match(regex);
+
+          if (match) {
+            const playerName = match[1]; // Oyuncunun Adı
+            const command = match[2]; // Yazdığı Komut
+
+            // logAudit(Action, Details, Source, Type)
+            logAudit("Oyun Komutu", command, playerName, "game");
+          }
+        } catch (e) {
+          console.error("Log parse hatası:", e);
+        }
+      }
+      // -------------------------------------------------------
+
       if (line.includes("<") && line.includes(">")) {
         if (dConf.optChat) sendDiscord(`**[Chat]** ${line.trim()}`, "chat");
       }
@@ -886,15 +935,19 @@ function startServerFunc() {
       if (line.includes("Done") || line.includes("For help"))
         io.emit("status", "online");
     });
+
     mcProcess.stderr.on("data", (data) =>
       io.emit("console-out", `ERR: ${data.toString()}`)
     );
+
     mcProcess.on("close", (code) => {
       io.emit("log", `🛑 Kapandı: ${code}`);
       io.emit("status", "offline");
       const dConf = getDiscordConfig();
       if (dConf.optStatus) sendDiscord("🔴 Sunucu kapandı.", "event");
+
       logAudit("Sunucu", "Sunucu kapandı.");
+
       if (correctPid)
         try {
           pidusage.unmonitor(correctPid);
@@ -967,6 +1020,11 @@ setInterval(() => {
 
 // 9-) SOCKET.IO BAĞLANTILARI
 io.on("connection", (socket) => {
+  socket.on('get-system-info', () => {
+        const info = getSystemRamInfo();
+        socket.emit('sistem-bilgileri', info);
+    });
+
   socket.emit("status", mcProcess ? "online" : "offline");
   socket.emit("log-history", getLatestLogs(200));
   socket.on("get-settings", () => {
@@ -981,10 +1039,53 @@ io.on("connection", (socket) => {
       },
     });
   });
+  // AYARLARI KAYDETME VE DETAYLI LOGLAMA (GÜNCELLENDİ)
   socket.on("save-settings", (d) => {
-    if (d.ram) savePanelConfig({ ramMin: "8G", ramMax: `${d.ram}G` });
+    // 1. Eski Ayarları Yedekle
+    const oldConfig = getPanelConfig();
+    const oldProps = getProperties();
+    let changes = []; // Değişiklikleri burada toplayacağız
+
+    // 2. RAM Karşılaştırması
+    if (d.ram) {
+        const oldRam = oldConfig.ramMax ? oldConfig.ramMax.replace("G", "") : "?";
+        const newRam = d.ram;
+        
+        if (oldRam !== newRam) {
+            changes.push(`<b>RAM:</b> ${oldRam}GB ➝ ${newRam}GB`);
+            savePanelConfig({ 
+                ramMin: `${d.ram}G`, 
+                ramMax: `${d.ram}G` 
+            });
+        }
+    }
+
+    // 3. Properties (Oyun Ayarları) Karşılaştırması
     if (d.props) {
+      // Değişen ayarları bul
+      Object.keys(d.props).forEach(key => {
+          let oldVal = oldProps[key];
+          let newVal = String(d.props[key]); // Karşılaştırma için string yap
+
+          // Boolean değerleri düzelt (true/false bazen "true"/"false" string gelir)
+          if (oldVal === "true") oldVal = "Açık";
+          else if (oldVal === "false") oldVal = "Kapalı";
+          
+          if (newVal === "true") newVal = "Açık";
+          else if (newVal === "false") newVal = "Kapalı";
+
+          // Eğer değer değişmişse listeye ekle
+          if (oldProps[key] !== String(d.props[key])) {
+              // Key ismini güzelleştir (örn: max-players -> Max Players)
+              const readableKey = key.replace(/-/g, " ").toUpperCase();
+              changes.push(`<b>${readableKey}:</b> ${oldVal} ➝ ${newVal}`);
+          }
+      });
+
+      // Yeni ayarları kaydet
       saveProperties(d.props);
+
+      // Sunucuya canlı komut gönder (Eğer açıksa)
       if (mcProcess) {
         if (d.props["difficulty"])
           mcProcess.stdin.write(`difficulty ${d.props["difficulty"]}\n`);
@@ -996,8 +1097,16 @@ io.on("connection", (socket) => {
           mcProcess.stdin.write(`whitelist off\n`);
       }
     }
-    logAudit("Ayarlar", "Ayarlar güncellendi.");
-    io.emit("log", "✅ Ayarlar kaydedildi!");
+
+    // 4. Loglama (Eğer değişiklik varsa detaylı, yoksa standart yaz)
+    if (changes.length > 0) {
+        // Değişiklikleri alt alta liste olarak formatla
+        const detailsHTML = `<ul class="list-disc pl-4 space-y-1 text-gray-300 text-xs">${changes.map(c => `<li>${c}</li>`).join('')}</ul>`;
+        logAudit("Ayarlar", detailsHTML, "Panel Admin", "panel");
+        io.emit("log", "✅ Ayarlar güncellendi ve kaydedildi.");
+    } else {
+        io.emit("log", "ℹ️ Herhangi bir değişiklik algılanmadı.");
+    }
   });
   socket.on("get-whitelist", () => {
     socket.emit("whitelist-data", getWhitelist());
@@ -1162,7 +1271,12 @@ io.on("connection", (socket) => {
     if (c) {
       mcProcess.stdin.write(c + "\n");
       io.emit("console-out", `> [PANEL] ${c}\n`);
-      logAudit("Admin", `${d.action.toUpperCase()} -> ${d.target}`);
+      logAudit(
+        "Yönetim",
+        `${d.action.toUpperCase()} uygulandı: ${d.target}`,
+        "Panel Admin",
+        "panel"
+      );
       const conf = getDiscordConfig();
       if (conf.optAdmin) sendDiscord(`🛡️ **Admin:** ${c}`, "admin");
       setTimeout(() => {

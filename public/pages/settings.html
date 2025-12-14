@@ -33,12 +33,23 @@
         <h3 class="text-xs font-bold text-blue-400 uppercase tracking-widest mb-4">PERFORMANS</h3>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
-                <label class="block text-sm text-gray-300 mb-1">Maksimum RAM (Min: 4GB Sabit)</label>
+                <div class="flex justify-between items-center mb-1">
+                    <label class="block text-sm text-gray-300">Sunucu RAM Miktarı</label>
+                    <span id="ram-max-label" class="text-[10px] text-gray-500">Hesaplanıyor...</span>
+                </div>
+
                 <div class="flex items-center gap-3">
-                    <input type="range" id="set-ram-slider" min="6" max="24" step="1" class="flex-1 accent-blue-500">
-                    <span id="set-ram-display" class="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold w-12 text-center">6G</span>
+                    <input type="range" id="set-ram-slider" min="4" max="8" step="1" class="flex-1 accent-blue-500 cursor-pointer h-2 bg-gray-700 rounded-lg appearance-none">
+                    
+                    <span id="set-ram-display" class="bg-blue-600 text-white px-3 py-1 rounded text-sm font-bold w-14 text-center shadow">4G</span>
+                </div>
+                
+                <div class="flex justify-between text-[10px] text-gray-500 mt-1 px-1">
+                    <span>Min: 4GB</span>
+                    <span>Max: Sistem - 4GB</span>
                 </div>
             </div>
+            
             <div><label class="block text-sm text-gray-300 mb-1">Sunucu Portu</label><input type="number" id="set-server-port" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none"></div>
             <div><label class="block text-sm text-gray-300 mb-1">Görüş Mesafesi</label><input type="number" id="set-view-distance" class="w-full bg-gray-900 border border-gray-600 rounded p-2 text-white focus:border-blue-500 outline-none"></div>
         </div>
