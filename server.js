@@ -17,6 +17,10 @@ const multer = require("multer");
 const AdmZip = require("adm-zip");
 const cron = require("node-cron");
 const axios = require("axios");
+const nbt = require('prismarine-nbt');
+const util = require('util');
+const parseNbt = util.promisify(nbt.parse);
+const crypto = require('crypto'); // SHA1 hesaplamak için gerekli
 
 // --- KLASÖR YAPILANDIRMASI ---
 const SERVER_FOLDER_NAME = "mc-server";
@@ -45,6 +49,8 @@ const BACKUP_DIR = path.join(__dirname, "backups");
 const uploadWorld = multer({ dest: path.join(__dirname, "temp_uploads") });
 
 const PORT = 3000;
+
+let isManualStop = false; // Global değişken
 
 // 2-) BAŞLANGIÇ KONTROLLERİ
 console.log("==========================================");
@@ -278,21 +284,21 @@ function getSchedules() {
 
 // 3.15-) [YENİ] Sistem RAM Bilgisi Hesaplama
 function getSystemRamInfo() {
-    try {
-        const totalMemBytes = os.totalmem();
-        const totalMemGB = Math.floor(totalMemBytes / (1024 * 1024 * 1024));
-        
-        // Max slider = Toplam RAM - 4GB. Eğer sistem RAM'i azsa en az 4 dönsün.
-        const maxSliderValue = Math.max(4, totalMemGB - 4); 
+  try {
+    const totalMemBytes = os.totalmem();
+    const totalMemGB = Math.floor(totalMemBytes / (1024 * 1024 * 1024));
 
-        return {
-            totalRam: totalMemGB,
-            maxSlider: maxSliderValue
-        };
-    } catch (e) {
-        // Hata olursa varsayılan 8 döndür
-        return { totalRam: 16, maxSlider: 12 };
-    }
+    // Max slider = Toplam RAM - 4GB. Eğer sistem RAM'i azsa en az 4 dönsün.
+    const maxSliderValue = Math.max(4, totalMemGB - 4);
+
+    return {
+      totalRam: totalMemGB,
+      maxSlider: maxSliderValue,
+    };
+  } catch (e) {
+    // Hata olursa varsayılan 8 döndür
+    return { totalRam: 16, maxSlider: 12 };
+  }
 }
 
 // 4-) MULTER AYARLARI (DOSYA YÜKLEME)
@@ -334,6 +340,18 @@ const uploadPlugin = multer({
       cb(null, PLUGINS_DIR);
     },
     filename: (req, file, cb) => cb(null, file.originalname),
+  }),
+});
+
+// Resource Pack Klasörü
+const RP_DIR = path.join(__dirname, "public", "resourcepacks");
+if (!fs.existsSync(RP_DIR)) fs.mkdirSync(RP_DIR, { recursive: true });
+
+// Resource Pack için Multer
+const uploadRP = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, RP_DIR),
+    filename: (req, file, cb) => cb(null, "server-resourcepack.zip"), // Sabit isimle kaydediyoruz
   }),
 });
 
@@ -824,6 +842,72 @@ app.get("/api/check-setup", (req, res) => {
   res.json({ installed: isInstalled });
 });
 
+// 5.7-) ResourcePack
+// --- RESOURCE PACK İŞLEMLERİ ---
+
+// 1. Yükleme ve Hash Hesaplama
+app.post("/api/upload-rp", uploadRP.single("pack"), (req, res) => {
+    if (!req.file) return res.json({ success: false, error: "Dosya yok." });
+    
+    try {
+        const filePath = path.join(RP_DIR, "server-resourcepack.zip");
+        const fileBuffer = fs.readFileSync(filePath);
+        
+        // SHA1 Hash Hesapla
+        const shasum = crypto.createHash('sha1');
+        shasum.update(fileBuffer);
+        const sha1 = shasum.digest('hex');
+
+        // İndirme Linkini Oluştur (Sunucunun o anki host adresi üzerinden)
+        // Not: Eğer panel ve oyun sunucusu aynı IP'deyse bu çalışır.
+        // req.headers.host "localhost:3000" veya "192.168.1.5:3000" gibi döner.
+        const downloadUrl = `http://${req.headers.host}/resourcepacks/server-resourcepack.zip`;
+
+        // server.properties Güncelle
+        const props = getProperties();
+        props['resource-pack'] = downloadUrl;
+        props['resource-pack-sha1'] = sha1;
+        saveProperties(props);
+
+        logAudit("Ayarlar", "Yeni kaynak paketi yüklendi.");
+        res.json({ success: true, sha1: sha1 });
+
+    } catch (e) {
+        console.error(e);
+        res.json({ success: false, error: "İşlem sırasında hata oluştu." });
+    }
+});
+
+// 2. Silme
+app.delete("/api/delete-rp", (req, res) => {
+    const filePath = path.join(RP_DIR, "server-resourcepack.zip");
+    if (fs.existsSync(filePath)) {
+        try {
+            fs.unlinkSync(filePath);
+            
+            // Properties'den kaldır
+            const props = getProperties();
+            props['resource-pack'] = "";
+            props['resource-pack-sha1'] = "";
+            saveProperties(props);
+
+            logAudit("Ayarlar", "Kaynak paketi silindi.");
+            res.json({ success: true });
+        } catch (e) {
+            res.json({ success: false, error: e.message });
+        }
+    } else {
+        res.json({ success: false, error: "Paket bulunamadı." });
+    }
+});
+
+// 3. Durum Kontrolü (Sayfa açılınca dolu mu boş mu görelim)
+app.get("/api/check-rp", (req, res) => {
+    const filePath = path.join(RP_DIR, "server-resourcepack.zip");
+    const exists = fs.existsSync(filePath);
+    res.json({ exists: exists });
+});
+
 // 6-) ZAMANLAYICI
 let activeCronJobs = [];
 function loadSchedules() {
@@ -941,12 +1025,34 @@ function startServerFunc() {
     );
 
     mcProcess.on("close", (code) => {
-      io.emit("log", `🛑 Kapandı: ${code}`);
+      io.emit("log", `🛑 Sunucu Kapandı. Çıkış Kodu: ${code}`);
       io.emit("status", "offline");
-      const dConf = getDiscordConfig();
-      if (dConf.optStatus) sendDiscord("🔴 Sunucu kapandı.", "event");
 
-      logAudit("Sunucu", "Sunucu kapandı.");
+      const dConf = getDiscordConfig();
+      if (dConf.optStatus)
+        sendDiscord(`🔴 Sunucu kapandı. (Kod: ${code})`, "event");
+
+      logAudit("Sunucu", `Sunucu kapandı (Kod: ${code}).`);
+
+      // --- [YENİ] AUTO RESTART MANTIĞI ---
+      const currentConfig = getPanelConfig(); // Config'i taze oku
+
+      // Eğer manuel durdurulmadıysa VE çıkış kodu 0 değilse (hata varsa) VE ayar açıksa
+      // Not: Bazen normal kapanışta bile kod 0 olmayabilir, o yüzden isManualStop çok önemli.
+      if (!isManualStop && currentConfig.autoRestart === true) {
+        io.emit(
+          "log",
+          "⚠️ OTO-RESTART: Sunucu beklenmedik şekilde kapandı! 10 saniye içinde yeniden başlatılıyor..."
+        );
+
+        setTimeout(() => {
+          io.emit("log", "🔄 Otomatik yeniden başlatma başlatılıyor...");
+          startServerFunc();
+        }, 10000); // 10 Saniye bekle
+      }
+
+      isManualStop = false; // Bayrağı sıfırla
+      // ------------------------------------
 
       if (correctPid)
         try {
@@ -968,13 +1074,22 @@ loadSchedules();
 // 8-) İSTATİSTİK DÖNGÜSÜ
 setInterval(() => {
   const cOps = getOps();
-  let statsData = { cpu: 0, ram: 0, players: onlinePlayers, ops: cOps };
+
+  // [YENİ] Config'den o anki Max RAM ayarını alıp MB'a çeviriyoruz
+  // Böylece Dashboard'da % hesaplaması doğru yapılır (Örn: 16GB ayarlıysa 16384 MB üzerinden hesaplar)
+  const conf = getPanelConfig();
+  const maxRamMB = conf.ramMax ? parseInt(conf.ramMax) * 1024 : 4096;
+
+  // 'max' parametresini ekledik
+  let statsData = { cpu: 0, ram: 0, max: maxRamMB, players: onlinePlayers, ops: cOps };
+
   if (!mcProcess) {
     correctPid = null;
     onlinePlayers = [];
     io.emit("server-stats", { ...statsData, players: [], ops: cOps });
     return;
   }
+
   if (!correctPid) {
     const cmd = `powershell -command "Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -like '*${JAR_NAME}*' } | Sort-Object WorkingSetSize -Descending | Select-Object -First 1 | ForEach-Object { $_.ProcessId.ToString() + ' ' + $_.WorkingSetSize.ToString() }"`;
     exec(cmd, (e, out) => {
@@ -991,6 +1106,7 @@ setInterval(() => {
               if (cpu > 100) cpu = 100;
               statsData.cpu = cpu;
               statsData.ram = mb;
+              // statsData içinde artık 'max' verisi de var, frontend bunu kullanacak
               io.emit("server-stats", statsData);
             });
             correctPid = pid;
@@ -1012,6 +1128,7 @@ setInterval(() => {
         if (cpu > 100) cpu = 100;
         statsData.cpu = cpu;
         statsData.ram = (s.memory / 1048576).toFixed(0);
+        // statsData içinde artık 'max' verisi de var, frontend bunu kullanacak
         io.emit("server-stats", statsData);
       }
     });
@@ -1020,18 +1137,19 @@ setInterval(() => {
 
 // 9-) SOCKET.IO BAĞLANTILARI
 io.on("connection", (socket) => {
-  socket.on('get-system-info', () => {
-        const info = getSystemRamInfo();
-        socket.emit('sistem-bilgileri', info);
-    });
+  socket.on("get-system-info", () => {
+    const info = getSystemRamInfo();
+    socket.emit("sistem-bilgileri", info);
+  });
 
   socket.emit("status", mcProcess ? "online" : "offline");
   socket.emit("log-history", getLatestLogs(200));
   socket.on("get-settings", () => {
-    const c = getPanelConfig();
+    const c = getPanelConfig(); // config.json'u oku
     const p = getProperties();
     socket.emit("settings-data", {
-      ram: c.ramMax.replace("G", ""),
+      ram: c.ramMax ? c.ramMax.replace("G", "") : "4",
+      config: c,
       props: p,
       info: {
         type: c.serverType || "Bilinmiyor",
@@ -1048,38 +1166,50 @@ io.on("connection", (socket) => {
 
     // 2. RAM Karşılaştırması
     if (d.ram) {
-        const oldRam = oldConfig.ramMax ? oldConfig.ramMax.replace("G", "") : "?";
-        const newRam = d.ram;
-        
-        if (oldRam !== newRam) {
-            changes.push(`<b>RAM:</b> ${oldRam}GB ➝ ${newRam}GB`);
-            savePanelConfig({ 
-                ramMin: `${d.ram}G`, 
-                ramMax: `${d.ram}G` 
-            });
-        }
+      const oldRam = oldConfig.ramMax ? oldConfig.ramMax.replace("G", "") : "?";
+      const newRam = d.ram;
+
+      if (oldRam !== newRam) {
+        changes.push(`<b>RAM:</b> ${oldRam}GB ➝ ${newRam}GB`);
+        savePanelConfig({
+          ramMin: `${d.ram}G`,
+          ramMax: `${d.ram}G`,
+        });
+      }
+    }
+
+    // [YENİ] Config (Auto Restart) Değişimi
+    if (d.config) {
+      if (oldConfig.autoRestart !== d.config.autoRestart) {
+        changes.push(
+          `<b>Oto-Restart:</b> ${oldConfig.autoRestart ? "Aktif" : "Pasif"} ➝ ${
+            d.config.autoRestart ? "Aktif" : "Pasif"
+          }`
+        );
+        savePanelConfig({ autoRestart: d.config.autoRestart });
+      }
     }
 
     // 3. Properties (Oyun Ayarları) Karşılaştırması
     if (d.props) {
       // Değişen ayarları bul
-      Object.keys(d.props).forEach(key => {
-          let oldVal = oldProps[key];
-          let newVal = String(d.props[key]); // Karşılaştırma için string yap
+      Object.keys(d.props).forEach((key) => {
+        let oldVal = oldProps[key];
+        let newVal = String(d.props[key]); // Karşılaştırma için string yap
 
-          // Boolean değerleri düzelt (true/false bazen "true"/"false" string gelir)
-          if (oldVal === "true") oldVal = "Açık";
-          else if (oldVal === "false") oldVal = "Kapalı";
-          
-          if (newVal === "true") newVal = "Açık";
-          else if (newVal === "false") newVal = "Kapalı";
+        // Boolean değerleri düzelt (true/false bazen "true"/"false" string gelir)
+        if (oldVal === "true") oldVal = "Açık";
+        else if (oldVal === "false") oldVal = "Kapalı";
 
-          // Eğer değer değişmişse listeye ekle
-          if (oldProps[key] !== String(d.props[key])) {
-              // Key ismini güzelleştir (örn: max-players -> Max Players)
-              const readableKey = key.replace(/-/g, " ").toUpperCase();
-              changes.push(`<b>${readableKey}:</b> ${oldVal} ➝ ${newVal}`);
-          }
+        if (newVal === "true") newVal = "Açık";
+        else if (newVal === "false") newVal = "Kapalı";
+
+        // Eğer değer değişmişse listeye ekle
+        if (oldProps[key] !== String(d.props[key])) {
+          // Key ismini güzelleştir (örn: max-players -> Max Players)
+          const readableKey = key.replace(/-/g, " ").toUpperCase();
+          changes.push(`<b>${readableKey}:</b> ${oldVal} ➝ ${newVal}`);
+        }
       });
 
       // Yeni ayarları kaydet
@@ -1100,12 +1230,14 @@ io.on("connection", (socket) => {
 
     // 4. Loglama (Eğer değişiklik varsa detaylı, yoksa standart yaz)
     if (changes.length > 0) {
-        // Değişiklikleri alt alta liste olarak formatla
-        const detailsHTML = `<ul class="list-disc pl-4 space-y-1 text-gray-300 text-xs">${changes.map(c => `<li>${c}</li>`).join('')}</ul>`;
-        logAudit("Ayarlar", detailsHTML, "Panel Admin", "panel");
-        io.emit("log", "✅ Ayarlar güncellendi ve kaydedildi.");
+      // Değişiklikleri alt alta liste olarak formatla
+      const detailsHTML = `<ul class="list-disc pl-4 space-y-1 text-gray-300 text-xs">${changes
+        .map((c) => `<li>${c}</li>`)
+        .join("")}</ul>`;
+      logAudit("Ayarlar", detailsHTML, "Panel Admin", "panel");
+      io.emit("log", "✅ Ayarlar güncellendi ve kaydedildi.");
     } else {
-        io.emit("log", "ℹ️ Herhangi bir değişiklik algılanmadı.");
+      io.emit("log", "ℹ️ Herhangi bir değişiklik algılanmadı.");
     }
   });
   socket.on("get-whitelist", () => {
@@ -1250,7 +1382,12 @@ io.on("connection", (socket) => {
     "send-command",
     (cmd) => mcProcess && mcProcess.stdin.write(cmd + "\n")
   );
-  socket.on("stop-server", () => mcProcess && mcProcess.stdin.write("stop\n"));
+  socket.on("stop-server", () => {
+    if (mcProcess) {
+      isManualStop = true;
+      mcProcess.stdin.write("stop\n");
+    }
+  });
   socket.on("admin-action", (d) => {
     if (!mcProcess) return;
     let c = "";
@@ -1304,6 +1441,170 @@ io.on("connection", (socket) => {
     setTimeout(() => {
       io.emit("banned-ips-data", getBannedIPs());
     }, 1000);
+  });
+
+  
+  // [YENİ] TÜM OYUNCULARI GETİR (usercache.json + Online Durumu)
+  socket.on("get-all-players", async () => {
+      const userCachePath = path.join(MC_SERVER_PATH, "usercache.json");
+      let allPlayers = [];
+
+      // 1. usercache.json oku (Tarihçesi olan herkes buradadır)
+      if (fs.existsSync(userCachePath)) {
+          try {
+              const cache = JSON.parse(fs.readFileSync(userCachePath));
+              allPlayers = cache.map(p => ({
+                  name: p.name,
+                  uuid: p.uuid,
+                  online: onlinePlayers.includes(p.name) // Global online listesinden kontrol
+              }));
+          } catch (e) { console.error("Usercache okuma hatası", e); }
+      }
+
+      // Eğer cache yoksa en azından online oyuncuları ekle
+      onlinePlayers.forEach(pName => {
+          if (!allPlayers.find(p => p.name === pName)) {
+              allPlayers.push({ name: pName, uuid: "unknown", online: true });
+          }
+      });
+
+      socket.emit("all-players-data", allPlayers);
+  });
+
+  // [YENİ] OYUNCU ENVANTERİ GETİR (NBT Parsing)
+  // [DÜZELTİLDİ] OYUNCU ENVANTERİ GETİR (NBT Parsing)
+  socket.on("get-player-inventory", async ({ uuid }) => {
+      const playerDataPath = path.join(MC_SERVER_PATH, "world", "playerdata", `${uuid}.dat`);
+      
+      let result = { inventory: [], ender: [] };
+
+      if (fs.existsSync(playerDataPath)) {
+          try {
+              const buffer = fs.readFileSync(playerDataPath);
+              
+              // promisify KALDIRILDI. Direkt parse fonksiyonunu kullanıyoruz.
+              // prismarine-nbt'nin parse fonksiyonu (buffer, callback) şeklinde çalışır veya promise döner mi versiyona göre değişir.
+              // En güvenli yöntem callback kullanmaktır ama await ile de deneyelim.
+              
+              // VEYA: Eski usül nbt.parse(buffer, (err, data) => ...) kullanalım, en garantisi budur.
+              const parsedData = await new Promise((resolve, reject) => {
+                  nbt.parse(buffer, (err, data) => {
+                      if (err) reject(err);
+                      else resolve(data);
+                  });
+              });
+              
+              // Veriyi Güvenli Şekilde Oku (Optional Chaining ?. kullanarak)
+              const inventoryList = parsedData.value?.Inventory?.value?.value;
+              const enderList = parsedData.value?.EnderItems?.value?.value;
+
+              if (Array.isArray(inventoryList)) {
+                  result.inventory = inventoryList.map(item => ({
+                      id: item.id?.value || "minecraft:air",
+                      Count: item.Count?.value || 1,
+                      Slot: item.Slot?.value || 0
+                  }));
+              }
+
+              if (Array.isArray(enderList)) {
+                  result.ender = enderList.map(item => ({
+                      id: item.id?.value || "minecraft:air",
+                      Count: item.Count?.value || 1,
+                      Slot: item.Slot?.value || 0
+                  }));
+              }
+
+          } catch (e) {
+              console.error("NBT Parse Hatası:", e.message);
+              // Hata olsa bile boş veri gönder ki loading ekranında kalmasın
+          }
+      } else {
+          console.log("Oyuncu verisi bulunamadı:", uuid);
+      }
+      
+      socket.emit("player-inventory-data", result);
+  });
+// [GÜNCELLENDİ] OYUNCU İSTATİSTİKLERİNİ GETİR (DÜZELTİLMİŞ)
+  socket.on("get-player-stats", () => {
+      // 1. Doğru Dünya Klasörünü Bul
+      const props = getProperties(); 
+      const worldName = props["level-name"] || "world"; 
+      
+      const statsDir = path.join(MC_SERVER_PATH, worldName, "stats");
+      const userCachePath = path.join(MC_SERVER_PATH, "usercache.json");
+      
+      let stats = [];
+      let uuidToName = {};
+
+      // 2. İsimleri Önbelleğe Al
+      if (fs.existsSync(userCachePath)) {
+          try {
+              const cache = JSON.parse(fs.readFileSync(userCachePath));
+              cache.forEach(u => uuidToName[u.uuid] = u.name);
+          } catch(e) {}
+      }
+
+      // 3. İstatistik Dosyalarını Oku
+      if (fs.existsSync(statsDir)) {
+          try {
+              const files = fs.readdirSync(statsDir);
+              files.forEach(file => {
+                  if (file.endsWith(".json")) {
+                      const uuid = file.replace(".json", "");
+                      const name = uuidToName[uuid] || "Bilinmiyor";
+                      
+                      try {
+                          const content = JSON.parse(fs.readFileSync(path.join(statsDir, file)));
+                          
+                          let playTimeTicks = 0;
+                          let deaths = 0;
+                          let mobKills = 0;
+                          let playerKills = 0;
+
+                          // --- YENİ SÜRÜM KONTROLÜ (1.13+) ---
+                          if (content.stats && content.stats["minecraft:custom"]) {
+                              const custom = content.stats["minecraft:custom"];
+                              
+                              // ÖNEMLİ: Hem 'play_time' hem 'play_one_minute' kontrol ediyoruz.
+                              // Bazı sürümlerde play_time, bazılarında play_one_minute yazar.
+                              playTimeTicks = custom["minecraft:play_time"] || custom["minecraft:play_one_minute"] || 0;
+                              
+                              deaths = custom["minecraft:deaths"] || 0;
+                              mobKills = custom["minecraft:mob_kills"] || 0;
+                              playerKills = custom["minecraft:player_kills"] || 0;
+                          } 
+                          // --- ESKİ SÜRÜM KONTROLÜ (1.12 ve altı) ---
+                          else {
+                              playTimeTicks = content["stat.playOneMinute"] || 0;
+                              deaths = content["stat.deaths"] || 0;
+                              mobKills = content["stat.mobKills"] || 0;
+                              playerKills = content["stat.playerKills"] || 0;
+                          }
+
+                          // Ticks -> Saat Çevrimi (1 saniye = 20 tick)
+                          // .toFixed(2) ile 0.05 gibi küçük süreleri de gösteriyoruz.
+                          const playTimeHours = (playTimeTicks / 20 / 3600).toFixed(2);
+
+                          stats.push({
+                              name: name,
+                              uuid: uuid,
+                              playTime: parseFloat(playTimeHours),
+                              deaths: deaths,
+                              mobKills: mobKills,
+                              playerKills: playerKills
+                          });
+
+                      } catch(err) { console.log("Stat dosyası okunamadı:", file); }
+                  }
+              });
+          } catch(e) { console.log("Stats klasörü hatası:", e.message); }
+      } else {
+          // Klasör yoksa boş liste gönder
+          console.log("Stats klasörü bulunamadı:", statsDir);
+      }
+
+      // Veriyi Frontend'e Gönder
+      socket.emit("player-stats-data", stats);
   });
 });
 

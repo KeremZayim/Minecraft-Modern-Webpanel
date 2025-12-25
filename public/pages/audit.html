@@ -6,13 +6,24 @@
             <p class="text-xs text-gray-400">Sistem işlem geçmişi ve sunucu komutları.</p>
         </div>
 
-        <div class="bg-gray-900 p-1 rounded-lg flex items-center border border-gray-700">
-            <button id="btn-audit-filter-panel" class="px-4 py-1.5 rounded-md text-xs font-bold transition bg-indigo-600 text-white shadow">
-                PANEL İŞLEMLERİ
-            </button>
-            <button id="btn-audit-filter-game" class="px-4 py-1.5 rounded-md text-xs font-bold transition text-gray-400 hover:text-white hover:bg-gray-800">
-                OYUN KOMUTLARI
-            </button>
+        <div class="flex items-center gap-2">
+            <div class="bg-gray-900 p-1 rounded-lg flex items-center border border-gray-700">
+                <button id="btn-audit-filter-panel" class="px-4 py-1.5 rounded-md text-xs font-bold transition bg-indigo-600 text-white shadow">
+                    PANEL İŞLEMLERİ
+                </button>
+                <button id="btn-audit-filter-game" class="px-4 py-1.5 rounded-md text-xs font-bold transition text-gray-400 hover:text-white hover:bg-gray-800">
+                    OYUN KOMUTLARI
+                </button>
+            </div>
+
+            <div id="audit-player-filter-wrapper" class="hidden flex items-center bg-gray-900 p-1 rounded-lg border border-gray-700 h-full">
+                <div class="px-2 text-gray-500">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                </div>
+                <input list="audit-players-datalist" id="audit-player-filter-input" placeholder="Oyuncu Ara..." class="bg-transparent text-white text-xs outline-none w-32 placeholder-gray-500 h-full">
+                <datalist id="audit-players-datalist">
+                    </datalist>
+            </div>
         </div>
         
         <button id="btn-open-export-modal" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-2 transition shadow-lg hover:scale-105">
@@ -28,15 +39,60 @@
             <thead class="bg-gray-800 sticky top-0 shadow-md z-10">
                 <tr>
                     <th class="p-3 text-xs text-gray-400 font-bold w-40">ZAMAN</th>
-                    <th class="p-3 text-xs text-gray-400 font-bold w-32">KAYNAK</th> <th class="p-3 text-xs text-gray-400 font-bold">İŞLEM DETAYI</th>
+                    <th class="p-3 text-xs text-gray-400 font-bold w-32">KAYNAK</th> 
+                    <th class="p-3 text-xs text-gray-400 font-bold">İŞLEM DETAYI</th>
                 </tr>
             </thead>
             <tbody id="audit-list-body" class="text-sm text-gray-300 font-mono divide-y divide-gray-800">
-            </tbody>
+                </tbody>
         </table>
     </div>
     
     <div class="flex justify-end items-center gap-4 bg-gray-800 p-3 rounded-xl border border-gray-700 shadow-lg">
+        <div class="flex items-center gap-2">
+            <span class="text-xs text-gray-400">Sayfa Başına:</span>
+            <select id="audit-limit" class="bg-gray-900 text-white text-xs border border-gray-600 rounded px-2 py-1 outline-none focus:border-indigo-500">
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="all">Tümü</option>
+            </select>
         </div>
-
+        <div class="flex items-center gap-2">
+            <button id="audit-prev-btn" class="p-1 rounded hover:bg-gray-700 text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <span id="audit-page-info" class="text-xs font-mono text-white">1 / 1</span>
+            <button id="audit-next-btn" class="p-1 rounded hover:bg-gray-700 text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+            </button>
+        </div>
     </div>
+
+    <div id="export-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/80 backdrop-blur-sm">
+        <div class="bg-gray-900 w-full max-w-sm rounded-xl border border-gray-700 shadow-2xl p-6 relative">
+            <button id="btn-close-export" class="absolute top-4 right-4 text-gray-500 hover:text-white transition">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+            
+            <h3 class="text-lg font-bold text-white mb-1">Excel Olarak İndir</h3>
+            <p class="text-xs text-gray-400 mb-6">İndirmek istediğiniz tarih aralığını seçin.</p>
+            
+            <div class="flex flex-col gap-4">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Başlangıç Tarihi</label>
+                    <input type="date" id="export-start-date" class="w-full bg-black border border-gray-700 rounded p-2 text-white text-sm focus:border-green-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1">Bitiş Tarihi</label>
+                    <input type="date" id="export-end-date" class="w-full bg-black border border-gray-700 rounded p-2 text-white text-sm focus:border-green-500 outline-none">
+                </div>
+                
+                <button id="btn-confirm-export" class="mt-2 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg font-bold text-sm transition flex justify-center items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    DOSYAYI OLUŞTUR VE İNDİR
+                </button>
+            </div>
+        </div>
+    </div>
+
+</div>

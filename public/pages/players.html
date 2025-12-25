@@ -8,6 +8,11 @@
                 ONLINE
             </button>
 
+            <button onclick="switchPlayerTab('all')" id="tab-btn-all" class="flex-1 py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2 bg-gray-700 text-gray-400 hover:text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                OYUNCU ENVANTERLERİ
+            </button>
+
             <button onclick="switchPlayerTab('ops')" id="tab-btn-ops" class="flex-1 py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2 bg-gray-700 text-gray-400 hover:text-white">
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>
                 YÖNETİCİLER
@@ -23,13 +28,57 @@
                 IP BAN
             </button>
 
+            <button onclick="switchPlayerTab('stats')" id="tab-btn-stats" class="flex-1 py-3 rounded-lg font-bold text-sm transition flex items-center justify-center gap-2 bg-gray-700 text-gray-400 hover:text-white hover:bg-yellow-600/20 hover:text-yellow-500">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 012 2h2a2 2 0 012-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                İSTATİSTİKLER
+            </button>
+
         </div>
     </div>
 
-    <div class="flex-1 bg-gray-900/50 p-4 rounded-xl border border-gray-800 overflow-y-auto">
+    <div class="flex-1 bg-gray-900/50 p-4 rounded-xl border border-gray-800 overflow-y-auto relative custom-scrollbar">
         
         <div id="tab-content-online" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 content-start">
             <div class="col-span-full text-center text-gray-500 py-10 italic">Yükleniyor...</div>
+        </div>
+
+        <div id="tab-content-all" class="hidden flex flex-col h-full gap-4">
+            
+            <div class="bg-gray-800 p-2 rounded-lg border border-gray-700 flex justify-between items-center">
+                <div class="relative w-full md:w-64">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-500">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    </span>
+                    <input type="text" id="all-players-search" placeholder="Oyuncu Ara..." class="w-full bg-gray-900 text-white text-xs border border-gray-600 rounded pl-9 pr-3 py-2 outline-none focus:border-blue-500 transition">
+                </div>
+                <div class="text-xs text-gray-500 font-mono hidden md:block">
+                    Tüm kayıtlı oyuncular listelenir.
+                </div>
+            </div>
+
+            <div id="all-players-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 overflow-y-auto flex-1 content-start pr-1">
+            </div>
+
+            <div class="flex justify-end items-center gap-4 bg-gray-800 p-3 rounded-xl border border-gray-700 shadow-lg mt-auto">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-400">Sayfa Başına:</span>
+                    <select id="all-players-limit" class="bg-gray-900 text-white text-xs border border-gray-600 rounded px-2 py-1 outline-none focus:border-indigo-500">
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button id="btn-all-prev" class="p-1 rounded hover:bg-gray-700 text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <span id="all-page-info" class="text-xs font-mono text-white min-w-[3rem] text-center">1 / 1</span>
+                    <button id="btn-all-next" class="p-1 rounded hover:bg-gray-700 text-gray-400 disabled:opacity-30 disabled:cursor-not-allowed transition">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                    </button>
+                </div>
+            </div>
+
         </div>
 
         <div id="tab-content-ops" class="hidden">
@@ -52,5 +101,115 @@
             <div id="ip-ban-list-container" class="space-y-2"></div>
         </div>
 
+        <div id="tab-content-stats" class="hidden h-full overflow-y-auto pr-2 custom-scrollbar">
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <div class="bg-gray-800 rounded-xl border border-gray-700 shadow-lg overflow-hidden flex flex-col">
+                    <div class="p-4 bg-gradient-to-r from-blue-900/50 to-gray-800 border-b border-gray-700 flex items-center gap-3">
+                        <div class="bg-blue-500/20 p-2 rounded-lg text-blue-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </div>
+                        <h3 class="font-bold text-gray-200">EN ÇOK OYNAYANLAR</h3>
+                    </div>
+                    <div id="stats-playtime-list" class="p-2 space-y-1">
+                        <div class="text-center text-gray-500 text-xs py-4">Veri yok...</div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-xl border border-gray-700 shadow-lg overflow-hidden flex flex-col">
+                    <div class="p-4 bg-gradient-to-r from-green-900/50 to-gray-800 border-b border-gray-700 flex items-center gap-3">
+                        <div class="bg-green-500/20 p-2 rounded-lg text-green-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                        </div>
+                        <h3 class="font-bold text-gray-200">AVCILAR (MOB KILL)</h3>
+                    </div>
+                    <div id="stats-kills-list" class="p-2 space-y-1">
+                         <div class="text-center text-gray-500 text-xs py-4">Veri yok...</div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-xl border border-gray-700 shadow-lg overflow-hidden flex flex-col">
+                    <div class="p-4 bg-gradient-to-r from-red-900/50 to-gray-800 border-b border-gray-700 flex items-center gap-3">
+                        <div class="bg-red-500/20 p-2 rounded-lg text-red-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                        </div>
+                        <h3 class="font-bold text-gray-200">MEZARLIK (ÖLÜMLER)</h3>
+                    </div>
+                    <div id="stats-deaths-list" class="p-2 space-y-1">
+                         <div class="text-center text-gray-500 text-xs py-4">Veri yok...</div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
     </div>
+
+    <div id="inventory-modal" class="fixed inset-0 bg-black/90 z-[70] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-[#c6c6c6] w-full max-w-3xl rounded shadow-2xl border-4 border-[#555555] relative flex flex-col max-h-[90vh]">
+            <div class="bg-[#c6c6c6] p-2 border-b-2 border-[#555555] flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <img id="inv-player-head" src="" class="w-6 h-6 rounded-sm border border-gray-600">
+                    <h3 id="inv-player-name" class="text-[#404040] font-bold text-lg font-minecraft">Oyuncu Envanteri</h3>
+                </div>
+                <button onclick="document.getElementById('inventory-modal').classList.add('hidden')" class="text-red-600 font-bold hover:bg-red-200 px-2 rounded">X</button>
+            </div>
+
+            <div class="p-4 overflow-y-auto bg-[#c6c6c6] flex flex-col gap-4 font-minecraft text-[#404040]">
+                
+                <div class="flex gap-8">
+                    <div>
+                        <h4 class="text-xs font-bold mb-1">ZIRH</h4>
+                        <div class="flex gap-1" id="inv-armor">
+                            </div>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-bold mb-1">SOL EL</h4>
+                        <div class="flex gap-1" id="inv-offhand">
+                            </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 class="text-xs font-bold mb-1">ENVANTER</h4>
+                    <div class="grid grid-cols-9 gap-1 p-2 bg-[#8b8b8b] border-2 border-white border-t-[#373737] border-l-[#373737]" id="inv-main">
+                        </div>
+                </div>
+
+                <div>
+                    <div class="grid grid-cols-9 gap-1 p-2 bg-[#8b8b8b] border-2 border-white border-t-[#373737] border-l-[#373737]" id="inv-hotbar">
+                        </div>
+                </div>
+
+                <div class="mt-4 pt-4 border-t border-[#a0a0a0]">
+                    <h4 class="text-xs font-bold mb-1 text-purple-900">ENDER SANDIĞI</h4>
+                    <div class="grid grid-cols-9 gap-1 p-2 bg-[#8b8b8b] border-2 border-white border-t-[#373737] border-l-[#373737]" id="inv-ender">
+                        </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        .font-minecraft { font-family: monospace; letter-spacing: -0.5px; }
+        /* Slot Görünümü */
+        .mc-slot {
+            width: 36px; height: 36px;
+            background-color: #8b8b8b;
+            border: 2px solid;
+            border-color: #373737 #fff #fff #373737;
+            display: flex; align-items: center; justify-content: center;
+            position: relative;
+        }
+        .mc-slot:hover { background-color: #a0a0a0; }
+        .mc-item-count {
+            position: absolute; bottom: 0; right: 2px;
+            color: white; font-size: 10px; font-weight: bold;
+            text-shadow: 1px 1px 0 #000;
+        }
+        .mc-item-img { w-8 h-8 rendering-pixelated; }
+    </style>
+
 </div>

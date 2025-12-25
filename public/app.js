@@ -102,6 +102,11 @@ let auditPageSize = 50;
 
 let currentOnlinePlayers = []; // Oyuncuları burada tutacağız
 
+// Oyuncu Sayfalama Değişkenleri
+let allPlayersData = [];
+let allPlayersPage = 1;
+let allPlayersLimit = 50;
+
 // En çok kullanılan komutları buraya ekledim, istersen artırabilirsin
 const commonCommands = [
   "ban",
@@ -261,29 +266,63 @@ function initDashboardPage() {
   }
 }
 
-// 4.2-) updateDashboardStats
+// 4.2-) updateDashboardStats (RAM YÜZDESİ DÜZELTİLDİ)
+// 4.2-) updateDashboardStats (RENKLENDİRME GÜNCELLENDİ)
 function updateDashboardStats(data) {
   const ramBar = document.getElementById("dash-ram-bar");
   const ramText = document.getElementById("dash-ram-text");
   const ramPercent = document.getElementById("dash-ram-percent");
 
+  // --- RAM HESAPLAMA VE RENKLENDİRME ---
   if (ramBar && ramText) {
     const currentRam = parseInt(data.ram);
-    const maxRam = 12288;
+    const maxRam = data.max || 4096;
     const percent = Math.min((currentRam / maxRam) * 100, 100).toFixed(1);
+
+    // Renk Mantığı:
+    // < 60 : Mor (Varsayılan)
+    // 60-70: Sarı
+    // 70-80: Turuncu
+    // 80+  : Kırmızı
+    let ramColorClass = "bg-purple-600"; // Varsayılan Mor
+    if (percent >= 80) ramColorClass = "bg-red-600";
+    else if (percent >= 70) ramColorClass = "bg-orange-500";
+    else if (percent >= 60) ramColorClass = "bg-yellow-500";
 
     ramText.textContent = `${data.ram} MB`;
     ramBar.style.width = `${percent}%`;
+
+    // Sınıfı uygula
+    ramBar.className = `h-full rounded-full transition-all duration-500 ${ramColorClass}`;
+
     if (ramPercent) ramPercent.textContent = `${percent}%`;
   }
 
+  // --- CPU HESAPLAMA VE RENKLENDİRME ---
   const cpuBar = document.getElementById("dash-cpu-bar");
   const cpuText = document.getElementById("dash-cpu-text");
+
   if (cpuBar && cpuText) {
+    const cpuVal = parseFloat(data.cpu);
+
+    // Renk Mantığı:
+    // < 60 : Amber/Turuncumsu (Varsayılan)
+    // 60-70: Sarı
+    // 70-80: Turuncu
+    // 80+  : Kırmızı
+    let cpuColorClass = "bg-amber-500"; // Varsayılan Turuncumsu
+    if (cpuVal >= 80) cpuColorClass = "bg-red-600";
+    else if (cpuVal >= 70) cpuColorClass = "bg-orange-500";
+    else if (cpuVal >= 60) cpuColorClass = "bg-yellow-500";
+
     cpuText.textContent = `${data.cpu}%`;
     cpuBar.style.width = `${Math.min(data.cpu, 100)}%`;
+
+    // Sınıfı uygula
+    cpuBar.className = `h-full rounded-full transition-all duration-500 ${cpuColorClass}`;
   }
 
+  // --- OYUNCU KAFA LİSTESİ (Değişmedi) ---
   const playerText = document.getElementById("dash-player-text");
   const headContainer = document.getElementById("dash-player-heads");
   if (playerText) {
@@ -311,171 +350,188 @@ function updateDashboardStats(data) {
 // ============================================================================
 // 5-) KONSOL SAYFASI MANTIĞI
 // ============================================================================
-// 5.1-) initConsolePage (GELİŞMİŞ TAB & POPUP MENÜ)
+// ============================================================================
+// 5-) KONSOL SAYFASI MANTIĞI
+// ============================================================================
+// 5.1-) initConsolePage (GELİŞMİŞ AUTO-COMPLETE)
 function initConsolePage() {
-  const consoleWindow = document.getElementById("console-window");
-  const commandForm = document.getElementById("command-form");
-  const commandInput = document.getElementById("command-input");
-  const suggestionBox = document.getElementById("autocomplete-list"); // Yeni eklenen liste
+    const consoleWindow = document.getElementById("console-window");
+    const commandForm = document.getElementById("command-form");
+    const commandInput = document.getElementById("command-input");
+    
+    // Eğer HTML'de yoksa dinamik olarak oluştur (Garanti olsun)
+    let suggestionBox = document.getElementById("autocomplete-list");
+    if (!suggestionBox && commandForm) {
+        suggestionBox = document.createElement("ul");
+        suggestionBox.id = "autocomplete-list";
+        suggestionBox.className = "hidden absolute bottom-12 left-0 w-full bg-gray-800 border border-gray-700 rounded-t-lg shadow-2xl max-h-48 overflow-y-auto z-50";
+        commandForm.appendChild(suggestionBox);
+        
+        // Form relative olsun ki liste düzgün dursun
+        commandForm.classList.add("relative");
+    }
 
-  let suggestionIndex = -1; // Listede kaçıncı sıradayız
-  let currentSuggestions = []; // O anki öneriler
+    let suggestionIndex = -1; 
+    let currentSuggestions = [];
 
-  if (consoleWindow) {
-    consoleWindow.innerHTML = "";
-    storedLogs.forEach((log) => appendLogToUI(log, false));
-    setTimeout(() => {
-      consoleWindow.scrollTop = consoleWindow.scrollHeight;
-    }, 100);
-  }
-  updateDashboardUI(currentStatus);
+    // Konsol Geçmişini Yükle
+    if (consoleWindow) {
+        consoleWindow.innerHTML = "";
+        storedLogs.forEach((log) => appendLogToUI(log, false));
+        setTimeout(() => { consoleWindow.scrollTop = consoleWindow.scrollHeight; }, 100);
+    }
+    updateDashboardUI(currentStatus);
 
-  // Yardımcı: Listeyi Temizle ve Gizle
-  const closeSuggestions = () => {
-    suggestionBox.classList.add("hidden");
-    suggestionBox.innerHTML = "";
-    currentSuggestions = [];
-    suggestionIndex = -1;
-  };
+    // --- YARDIMCI FONKSİYONLAR ---
 
-  // Yardımcı: Öneriyi Seç ve Tamamla
-  const selectSuggestion = (value) => {
-    const parts = commandInput.value.split(" ");
-    parts[parts.length - 1] = value; // Son kelimeyi değiştir
-    commandInput.value = parts.join(" ") + " "; // Sonuna boşluk ekle
-    commandInput.focus();
-    closeSuggestions();
-  };
+    const closeSuggestions = () => {
+        if(suggestionBox) {
+            suggestionBox.classList.add("hidden");
+            suggestionBox.innerHTML = "";
+        }
+        currentSuggestions = [];
+        suggestionIndex = -1;
+    };
 
-  if (commandForm && commandInput) {
-    // 1. KOMUT GÖNDERME ve LİSTEDEN SEÇME (ENTER)
-    commandForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-
-      // Eğer liste açıksa ve bir şey seçiliyse, komut gönderme, tamamla
-      if (!suggestionBox.classList.contains("hidden") && suggestionIndex > -1) {
-        selectSuggestion(currentSuggestions[suggestionIndex]);
-        return;
-      }
-
-      const cmd = commandInput.value.trim();
-      if (cmd) {
-        socket.emit("send-command", cmd);
-        // Geçmişe ekle (Basit versiyon)
-        // ... (Geçmiş kodları buraya eklenebilir)
-        commandInput.value = "";
+    const selectSuggestion = (value) => {
+        const parts = commandInput.value.split(" ");
+        parts[parts.length - 1] = value; // Son yazılan kelimeyi tamamla
+        commandInput.value = parts.join(" ") + " "; // Sonuna boşluk ekle
+        commandInput.focus();
         closeSuggestions();
-      }
-    });
+    };
 
-    // 2. KLAVYE DİNLEYİCİSİ (TAB ve OK TUŞLARI)
-    commandInput.addEventListener("keydown", (e) => {
-      // Eğer liste açıksa YUKARI/AŞAĞI tuşları ile gez
-      if (!suggestionBox.classList.contains("hidden")) {
-        const items = suggestionBox.querySelectorAll("li");
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          suggestionIndex = (suggestionIndex + 1) % items.length;
-          highlightItem(items);
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          suggestionIndex = (suggestionIndex - 1 + items.length) % items.length;
-          highlightItem(items);
-          return;
-        }
-        if (e.key === "Escape") {
-          closeSuggestions();
-          return;
-        }
-      }
-
-      // TAB TUŞU
-      if (e.key === "Tab") {
-        e.preventDefault();
-
-        const val = commandInput.value;
-        const parts = val.split(" ");
-        const lastWord = parts[parts.length - 1].toLowerCase();
-
-        if (!lastWord) return;
-
-        // Eşleşmeleri Bul
-        let matches = [];
-        // Senaryo 1: İlk kelimeyse komutlarda ara
-        if (parts.length === 1) {
-          matches = commonCommands.filter((c) => c.startsWith(lastWord));
-        }
-        // Senaryo 2: Sonraki kelimeyse oyuncularda ara
-        else {
-          matches = currentOnlinePlayers.filter((p) =>
-            p.toLowerCase().startsWith(lastWord)
-          );
+    const renderSuggestions = (list) => {
+        suggestionBox.innerHTML = "";
+        if (list.length === 0) {
+            closeSuggestions();
+            return;
         }
 
-        // Eşleşme Sonuçları
-        if (matches.length === 1) {
-          // Tek sonuç varsa direkt tamamla
-          selectSuggestion(matches[0]);
-        } else if (matches.length > 1) {
-          // Çok sonuç varsa listeyi aç
-          currentSuggestions = matches;
-          suggestionIndex = 0; // İlkini seçili yap
-          renderSuggestions(matches);
+        list.forEach((item, index) => {
+            const li = document.createElement("li");
+            li.className = "px-4 py-2 cursor-pointer hover:bg-gray-700 transition text-gray-200 border-b border-gray-700/50 last:border-0 flex items-center gap-2";
+            
+            // Seçili eleman stili
+            if (index === suggestionIndex) li.classList.add("bg-gray-700", "text-white");
+
+            // İkon belirle
+            const isCommand = commonCommands.includes(item);
+            const icon = isCommand 
+                ? `<span class="text-blue-400">/</span>` 
+                : `<img src="https://mc-heads.net/avatar/${item}/16" class="w-4 h-4 rounded-sm">`;
+
+            li.innerHTML = `${icon} <span class="font-mono text-sm">${item}</span>`;
+            
+            li.onclick = () => selectSuggestion(item);
+            suggestionBox.appendChild(li);
+        });
+        
+        // Listeyi göster (ve yukarı kaydır)
+        suggestionBox.classList.remove("hidden");
+        // Scroll ayarı (seçili öğe görünür olsun)
+        if (suggestionIndex > -1) {
+            const selected = suggestionBox.children[suggestionIndex];
+            if(selected) selected.scrollIntoView({ block: "nearest" });
         }
-      }
-    });
+    };
 
-    // INPUT DEĞİŞTİKÇE (Listeyi kapat)
-    // Kullanıcı elle siliyorsa listeyi kapatmalıyız
-    commandInput.addEventListener("input", () => {
-      // İsteğe bağlı: Her tuşa basıldığında da liste güncellenebilir
-      // Ama şimdilik sadece TAB ile açılması daha temiz.
-      closeSuggestions();
-    });
+    // --- EVENT LISTENERS ---
 
-    // Dışarı tıklayınca kapat
-    document.addEventListener("click", (e) => {
-      if (
-        !commandForm.contains(e.target) &&
-        !suggestionBox.contains(e.target)
-      ) {
-        closeSuggestions();
-      }
-    });
-  }
+    if (commandForm && commandInput) {
+        
+        // 1. INPUT EVENT (YAZARKEN ÇALIŞAN KISIM)
+        commandInput.addEventListener("input", () => {
+            const val = commandInput.value;
+            const parts = val.split(" ");
+            const lastWord = parts[parts.length - 1]; // Son kelimeyi al
 
-  // LİSTEYİ OLUŞTURAN FONKSİYON
-  function renderSuggestions(list) {
-    suggestionBox.innerHTML = "";
-    list.forEach((item, index) => {
-      const li = document.createElement("li");
-      li.className =
-        "px-4 py-2 cursor-pointer hover:bg-gray-700 transition text-gray-200";
-      if (index === 0) li.classList.add("bg-gray-700", "text-white"); // İlki seçili
+            // Eğer son kelime boşsa veya çok kısaysa kapat
+            if (lastWord.length < 1) {
+                closeSuggestions();
+                return;
+            }
 
-      // İkon ekleyelim (Komut mu Oyuncu mu?)
-      const icon = commonCommands.includes(item) ? "🔧" : "👤";
-      li.innerHTML = `<span class="opacity-50 mr-2">${icon}</span>${item}`;
+            // Kaynak belirle: İlk kelimeyse Komutlar, değilse Oyuncular
+            let source = [];
+            if (parts.length === 1) {
+                // Başında / varsa kaldırıp ara, yoksa direkt ara
+                const searchCmd = lastWord.startsWith("/") ? lastWord.substring(1) : lastWord;
+                source = commonCommands; 
+                // Filtrele
+                currentSuggestions = source.filter(c => c.startsWith(searchCmd.toLowerCase()));
+            } else {
+                source = currentOnlinePlayers;
+                // Filtrele
+                currentSuggestions = source.filter(p => p.toLowerCase().startsWith(lastWord.toLowerCase()));
+            }
 
-      li.onclick = () => selectSuggestion(item);
-      suggestionBox.appendChild(li);
-    });
-    suggestionBox.classList.remove("hidden");
-  }
+            // Listeyi Oluştur
+            if (currentSuggestions.length > 0) {
+                suggestionIndex = 0; // İlkini otomatik seç
+                renderSuggestions(currentSuggestions);
+            } else {
+                closeSuggestions();
+            }
+        });
 
-  // SEÇİMİ VURGULAYAN FONKSİYON
-  function highlightItem(items) {
-    items.forEach((item, idx) => {
-      if (idx === suggestionIndex) {
-        item.classList.add("bg-gray-700", "text-white");
-        item.scrollIntoView({ block: "nearest" });
-      } else {
-        item.classList.remove("bg-gray-700", "text-white");
-      }
-    });
-  }
+        // 2. KEYDOWN (YÖN TUŞLARI VE SEÇİM)
+        commandInput.addEventListener("keydown", (e) => {
+            const isListOpen = !suggestionBox.classList.contains("hidden") && currentSuggestions.length > 0;
+
+            if (isListOpen) {
+                if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    suggestionIndex = (suggestionIndex - 1 + currentSuggestions.length) % currentSuggestions.length;
+                    renderSuggestions(currentSuggestions);
+                    return;
+                }
+                if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    suggestionIndex = (suggestionIndex + 1) % currentSuggestions.length;
+                    renderSuggestions(currentSuggestions);
+                    return;
+                }
+                if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault(); // Form göndermeyi veya odak kaybını engelle
+                    if (suggestionIndex > -1) {
+                        selectSuggestion(currentSuggestions[suggestionIndex]);
+                    }
+                    return;
+                }
+                if (e.key === "Escape") {
+                    closeSuggestions();
+                    return;
+                }
+            } else {
+                // Liste kapalıyken TAB'a basarsa manuel tetikle (Eski usül)
+                if (e.key === "Tab") {
+                    e.preventDefault();
+                    // Input eventini manuel tetikle
+                    commandInput.dispatchEvent(new Event('input'));
+                }
+            }
+        });
+
+        // 3. FORM SUBMIT
+        commandForm.addEventListener("submit", (e) => {
+            e.preventDefault();
+            // Liste açıksa enter seçim yapar, kapalıysa komut gönderir
+            if (!suggestionBox.classList.contains("hidden")) return;
+
+            const cmd = commandInput.value.trim();
+            if (cmd) {
+                socket.emit("send-command", cmd);
+                commandInput.value = "";
+                closeSuggestions();
+            }
+        });
+
+        // Dışarı tıklayınca kapat
+        document.addEventListener("click", (e) => {
+            if (!commandForm.contains(e.target)) closeSuggestions();
+        });
+    }
 }
 
 // 5.2-) appendLogToUI
@@ -620,6 +676,99 @@ window.deleteItem = async (p) => {
     loadFileList(currentPath);
   }
 };
+
+// 6.3-) openEditor (Monaco Editor Entegrasyonu - DÜZELTİLDİ)
+let monacoEditor = null; // Editör örneğini tutacak global değişken
+
+async function openEditor(p) {
+  const m = document.getElementById("editor-modal");
+  const tContainer = document.getElementById("monaco-editor-container");
+  const s = document.getElementById("editor-save");
+  const c = document.getElementById("editor-close");
+  const fNameEl = document.getElementById("editor-filename");
+
+  // Dosyayı Sunucudan Oku
+  const r = await fetch(`/api/files/read?path=${encodeURIComponent(p)}`);
+  if (!r.ok) {
+    alert("Dosya okunamadı!");
+    return;
+  }
+  const content = await r.text();
+
+  // Modal'ı Aç
+  m.classList.remove("hidden");
+  if (fNameEl) fNameEl.textContent = p.split("/").pop();
+
+  // --- MONACO EDITOR BAŞLATMA (DÜZELTİLDİ) ---
+  // 1. Önce loader (require) var mı kontrol et
+  if (!window.require) {
+    alert(
+      "Monaco Loader (Script) bulunamadı! index.html dosyanıza script tag'ini eklediğinizden emin olun."
+    );
+    return;
+  }
+
+  // Dosya uzantısına göre dil belirle
+  const ext = p.split(".").pop();
+  let lang = "plaintext";
+  if (ext === "js") lang = "javascript";
+  else if (ext === "json") lang = "json";
+  else if (ext === "html") lang = "html";
+  else if (ext === "css") lang = "css";
+  else if (ext === "yml" || ext === "yaml") lang = "yaml";
+  else if (ext === "properties" || ext === "ini") lang = "ini";
+  else if (ext === "xml") lang = "xml";
+  else if (ext === "sh") lang = "shell";
+
+  // 2. Editör zaten varsa sadece içeriği ve dili güncelle
+  if (monacoEditor) {
+    monaco.editor.setModelLanguage(monacoEditor.getModel(), lang);
+    monacoEditor.setValue(content);
+  }
+  // 3. Editör yoksa sıfırdan oluştur
+  else {
+    // CDN yolunu ayarla
+    require.config({
+      paths: {
+        vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs",
+      },
+    });
+
+    // Modülleri yükle ve editörü oluştur
+    require(["vs/editor/editor.main"], function () {
+      // Container içini temizle (Garanti olsun)
+      tContainer.innerHTML = "";
+
+      monacoEditor = monaco.editor.create(tContainer, {
+        value: content,
+        language: lang,
+        theme: "vs-dark", // Koyu tema
+        automaticLayout: true, // Pencere boyutu değişince uyarla
+        minimap: { enabled: true },
+        scrollBeyondLastLine: false,
+        fontSize: 14,
+      });
+    });
+  }
+  // -----------------------------
+
+  // Kaydet Butonu
+  s.onclick = async () => {
+    // İçeriği editörden al (Hala yükleniyorsa boş dönebilir, kontrol edelim)
+    const val = monacoEditor ? monacoEditor.getValue() : content;
+
+    await fetch("/api/files/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: p, content: val }),
+    });
+    alert("Dosya Kaydedildi!");
+    m.classList.add("hidden");
+  };
+
+  // Kapat Butonu
+  c.onclick = () => m.classList.add("hidden");
+}
 
 // ============================================================================
 // 7-) YEDEKLEME SİSTEMİ (BACKUPS)
@@ -1034,128 +1183,194 @@ window.unban = (n) => socket.emit("unban-player", n);
 // ============================================================================
 // 11-) DENETİM KAYITLARI (AUDIT)
 // ============================================================================
-// 11.1-) initAuditPage
+
+// 11.1-) initAuditPage (GÜNCELLENMİŞ OYUNCU FİLTRESİ)
 function initAuditPage() {
-  socket.emit("get-audit");
+    socket.emit("get-audit");
 
-  // --- YENİ FİLTRE BUTONLARI ---
-  const btnPanel = document.getElementById("btn-audit-filter-panel");
-  const btnGame = document.getElementById("btn-audit-filter-game");
+    const btnPanel = document.getElementById("btn-audit-filter-panel");
+    const btnGame = document.getElementById("btn-audit-filter-game");
+    
+    // [YENİ] Oyuncu Filtresi Elementleri
+    const playerFilterWrapper = document.getElementById("audit-player-filter-wrapper");
+    const playerFilterInput = document.getElementById("audit-player-filter-input");
+    const playerDatalist = document.getElementById("audit-players-datalist");
 
-  const setFilter = (type) => {
-    currentAuditFilter = type;
-    auditPageIndex = 1;
+    const setFilter = (type) => {
+        currentAuditFilter = type;
+        auditPageIndex = 1;
 
-    // Buton stillerini güncelle
-    if (type === "panel") {
-      btnPanel.className =
-        "px-4 py-1.5 rounded-md text-xs font-bold transition bg-indigo-600 text-white shadow";
-      btnGame.className =
-        "px-4 py-1.5 rounded-md text-xs font-bold transition text-gray-400 hover:text-white hover:bg-gray-800";
-    } else {
-      btnPanel.className =
-        "px-4 py-1.5 rounded-md text-xs font-bold transition text-gray-400 hover:text-white hover:bg-gray-800";
-      btnGame.className =
-        "px-4 py-1.5 rounded-md text-xs font-bold transition bg-amber-600 text-white shadow";
-    }
-    renderAuditLogs();
-  };
-
-  if (btnPanel) btnPanel.onclick = () => setFilter("panel");
-  if (btnGame) btnGame.onclick = () => setFilter("game");
-  // -----------------------------
-
-  const limitSel = document.getElementById("audit-limit");
-  const btnPrev = document.getElementById("audit-prev-btn");
-  const btnNext = document.getElementById("audit-next-btn");
-
-  // (Geri kalan export modal kodları aynı kalıyor...)
-  const btnOpenModal = document.getElementById("btn-open-export-modal");
-  const modal = document.getElementById("export-modal");
-  const btnCloseModal = document.getElementById("btn-close-export");
-  const btnConfirmExport = document.getElementById("btn-confirm-export");
-  const inputStart = document.getElementById("export-start-date");
-  const inputEnd = document.getElementById("export-end-date");
-
-  if (limitSel) {
-    limitSel.value =
-      auditPageSize === allAuditLogs.length ? "all" : auditPageSize;
-    limitSel.onchange = () => {
-      auditPageSize =
-        limitSel.value === "all"
-          ? allAuditLogs.length
-          : parseInt(limitSel.value);
-      auditPageIndex = 1;
-      renderAuditLogs();
-    };
-  }
-
-  if (btnPrev) btnPrev.onclick = () => changeAuditPage(-1);
-  if (btnNext) btnNext.onclick = () => changeAuditPage(1);
-
-  if (btnOpenModal) {
-    btnOpenModal.onclick = () => {
-      const today = new Date();
-      const lastYear = new Date();
-      lastYear.setFullYear(today.getFullYear() - 1);
-
-      if (inputEnd) inputEnd.value = today.toISOString().split("T")[0];
-      if (inputStart) inputStart.value = lastYear.toISOString().split("T")[0];
-
-      modal.classList.remove("hidden");
-    };
-  }
-
-  if (btnCloseModal)
-    btnCloseModal.onclick = () => modal.classList.add("hidden");
-
-  if (btnConfirmExport) {
-    btnConfirmExport.onclick = () => {
-      const start = new Date(inputStart.value);
-      const end = new Date(inputEnd.value);
-      end.setHours(23, 59, 59);
-
-      let filtered = allAuditLogs.filter((log) => {
-        try {
-          const parts = log.time.split(" ")[0].split(".");
-          const logDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-          return logDate >= start && logDate <= end;
-        } catch (e) {
-          return false;
+        if (type === "panel") {
+            if(btnPanel) btnPanel.className = "px-4 py-1.5 rounded-md text-xs font-bold transition bg-indigo-600 text-white shadow";
+            if(btnGame) btnGame.className = "px-4 py-1.5 rounded-md text-xs font-bold transition text-gray-400 hover:text-white hover:bg-gray-800";
+            
+            // Panel modunda oyuncu filtresini gizle ve temizle
+            if(playerFilterWrapper) playerFilterWrapper.classList.add("hidden");
+            if(playerFilterInput) playerFilterInput.value = ""; 
+        } else {
+            if(btnPanel) btnPanel.className = "px-4 py-1.5 rounded-md text-xs font-bold transition text-gray-400 hover:text-white hover:bg-gray-800";
+            if(btnGame) btnGame.className = "px-4 py-1.5 rounded-md text-xs font-bold transition bg-amber-600 text-white shadow";
+            
+            // Oyun modunda filtreyi göster ve doldur
+            if(playerFilterWrapper) playerFilterWrapper.classList.remove("hidden");
+            updatePlayerFilterList();
         }
-      });
-
-      if (filtered.length === 0) {
-        alert("Seçilen tarih aralığında kayıt yok.");
-        return;
-      }
-
-      try {
-        const ws = XLSX.utils.json_to_sheet(filtered);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Denetim_Kayitlari");
-        XLSX.writeFile(wb, `Audit_Export.xlsx`);
-        modal.classList.add("hidden");
-      } catch (e) {
-        alert("Excel oluşturulamadı.");
-      }
+        renderAuditLogs();
     };
-  }
+
+    // [YENİ] Datalist'i benzersiz oyuncu isimleriyle doldur
+    const updatePlayerFilterList = () => {
+        if(!playerDatalist) return;
+        const players = new Set();
+        // Sadece 'game' tipindeki logların 'source' (oyuncu adı) kısmını al
+        allAuditLogs.forEach(log => {
+            if(log.type === 'game' && log.source) {
+                players.add(log.source);
+            }
+        });
+        
+        playerDatalist.innerHTML = "";
+        players.forEach(player => {
+            const option = document.createElement("option");
+            option.value = player;
+            playerDatalist.appendChild(option);
+        });
+    };
+
+    // [YENİ] Filtre inputuna yazıldıkça tabloyu yenile
+    if(playerFilterInput) {
+        playerFilterInput.oninput = () => {
+            auditPageIndex = 1; // Aramada ilk sayfaya dön
+            renderAuditLogs();
+        };
+    }
+
+    if (btnPanel) btnPanel.onclick = () => setFilter("panel");
+    if (btnGame) btnGame.onclick = () => setFilter("game");
+
+    const limitSel = document.getElementById("audit-limit");
+    const btnPrev = document.getElementById("audit-prev-btn");
+    const btnNext = document.getElementById("audit-next-btn");
+
+    const btnOpenModal = document.getElementById("btn-open-export-modal");
+    const modal = document.getElementById("export-modal");
+    const btnCloseModal = document.getElementById("btn-close-export");
+    const btnConfirmExport = document.getElementById("btn-confirm-export");
+    const inputStart = document.getElementById("export-start-date");
+    const inputEnd = document.getElementById("export-end-date");
+
+    if (limitSel) {
+        limitSel.value = auditPageSize === allAuditLogs.length ? "all" : auditPageSize;
+        limitSel.onchange = () => {
+            auditPageSize = limitSel.value === "all" ? allAuditLogs.length : parseInt(limitSel.value);
+            auditPageIndex = 1;
+            renderAuditLogs();
+        };
+    }
+
+    if (btnPrev) btnPrev.onclick = () => changeAuditPage(-1);
+    if (btnNext) btnNext.onclick = () => changeAuditPage(1);
+
+    if (btnOpenModal) {
+        btnOpenModal.onclick = () => {
+            const today = new Date();
+            const lastYear = new Date();
+            lastYear.setFullYear(today.getFullYear() - 1);
+            if (inputEnd) inputEnd.value = today.toISOString().split("T")[0];
+            if (inputStart) inputStart.value = lastYear.toISOString().split("T")[0];
+            modal.classList.remove("hidden");
+        };
+    }
+    if (btnCloseModal) btnCloseModal.onclick = () => modal.classList.add("hidden");
+    
+    // EXPORT KISMI (Filtre duyarlı)
+    if (btnConfirmExport) {
+        btnConfirmExport.onclick = () => {
+            if (typeof XLSX === 'undefined') { alert("Excel kütüphanesi yüklenemedi!"); return; }
+            
+            const startVal = inputStart.value;
+            const endVal = inputEnd.value;
+            if (!startVal || !endVal) { alert("Tarih seçin."); return; }
+            
+            const startDate = new Date(startVal);
+            const endDate = new Date(endVal);
+            endDate.setHours(23, 59, 59);
+
+            // Aktif Oyuncu Filtresini Al
+            const playerFilterVal = document.getElementById("audit-player-filter-input")?.value.toLowerCase() || "";
+
+            let filtered = allAuditLogs.filter((log) => {
+                // 1. Tarih Kontrolü
+                try {
+                    const parts = log.time.split(" ")[0].split(".");
+                    const logDate = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+                    if (logDate < startDate || logDate > endDate) return false;
+                } catch (e) { return false; }
+
+                // 2. Kategori Kontrolü
+                const logType = log.type || "panel";
+                if (logType !== currentAuditFilter) return false;
+
+                // 3. Oyuncu Adı Kontrolü
+                if (currentAuditFilter === 'game' && playerFilterVal) {
+                    if (!log.source.toLowerCase().includes(playerFilterVal)) return false;
+                }
+
+                return true;
+            });
+
+            if (filtered.length === 0) { alert("Kayıt yok."); return; }
+
+            const excelData = filtered.map(log => ({
+                "Tarih": log.time,
+                "Kaynak": log.source,
+                "Tür": log.type === 'game' ? 'Oyun İçi' : 'Panel',
+                "İşlem": log.action,
+                "Detaylar": log.details ? log.details.replace(/<[^>]*>?/gm, ' ') : ''
+            }));
+
+            try {
+                const ws = XLSX.utils.json_to_sheet(excelData);
+                const wb = XLSX.utils.book_new();
+                
+                let fileName = `Loglar_${currentAuditFilter}`;
+                if(currentAuditFilter === 'game' && playerFilterVal) fileName += `_${playerFilterVal}`;
+                fileName += `.xlsx`;
+
+                XLSX.utils.book_append_sheet(wb, ws, "Loglar");
+                XLSX.writeFile(wb, fileName);
+                modal.classList.add("hidden");
+            } catch (e) { alert("Hata oluştu."); }
+        };
+    }
 }
 
-// 11.2-) renderAuditLogs - (GÜNCELLENDİ: AÇILIR/KAPANIR DETAY)
+// 11.2-) renderAuditLogs (OYUNCU FİLTRESİ DESTEKLİ)
 function renderAuditLogs() {
     const tbody = document.getElementById("audit-list-body");
     const pageInfo = document.getElementById("audit-page-info");
     const btnPrev = document.getElementById("audit-prev-btn");
     const btnNext = document.getElementById("audit-next-btn");
+    
+    // [YENİ] Input değerini al
+    const playerFilterVal = document.getElementById("audit-player-filter-input")?.value.toLowerCase() || "";
 
     if (!tbody) return;
 
-    // Filtreleme
+    // Filtreleme Mantığı
     const filteredLogs = allAuditLogs.filter(l => {
         const logType = l.type || "panel"; 
-        return logType === currentAuditFilter;
+        
+        // 1. Tip Kontrolü (Panel mi Oyun mu?)
+        if (logType !== currentAuditFilter) return false;
+
+        // 2. [YENİ] Oyuncu Adı Kontrolü (Sadece Oyun Komutlarında ve input doluysa)
+        if (currentAuditFilter === 'game' && playerFilterVal) {
+            // Kaynak (Oyuncu Adı) aranan kelimeyi içeriyor mu?
+            if (!l.source.toLowerCase().includes(playerFilterVal)) return false;
+        }
+
+        return true;
     });
 
     const totalItems = filteredLogs.length;
@@ -1171,27 +1386,20 @@ function renderAuditLogs() {
 
     if (displayLogs.length === 0) {
         tbody.innerHTML =
-            '<tr><td colspan="3" class="p-4 text-center text-gray-500">Bu kategoride kayıt yok.</td></tr>';
+            '<tr><td colspan="3" class="p-4 text-center text-gray-500">Kayıt bulunamadı.</td></tr>';
     } else {
         displayLogs.forEach((l, index) => {
-            // Benzersiz ID oluştur (toggle için)
             const detailRowId = `audit-detail-${index}`;
-            
-            // Logun içinde HTML listesi var mı diye bak (<ul> etiketi varsa detaylıdır)
             const hasDetails = l.details && l.details.includes("<ul");
             const cursorClass = hasDetails ? "cursor-pointer hover:bg-gray-700" : "hover:bg-gray-700/50";
             const expandIcon = hasDetails ? '<span class="text-[10px] text-gray-500 ml-2">▼</span>' : '';
 
-            // --- ANA SATIR ---
             const tr = document.createElement("tr");
             tr.className = `border-b border-gray-800 transition ${cursorClass}`;
             
-            // Renk Ayarı
             let sourceColor = "text-indigo-400";
             if (l.type === "game") sourceColor = "text-amber-400";
 
-            // Özet Metin (Eğer detaylı liste varsa, tabloda sadece "Detaylar için tıklayın" yazsın veya başlığı yazsın)
-            // Eğer basit bir log ise direkt kendisini yazsın.
             let summaryText = l.details;
             if(hasDetails) {
                 summaryText = '<span class="text-blue-400 font-bold text-xs italic">Detayları görmek için tıklayın...</span>';
@@ -1211,13 +1419,11 @@ function renderAuditLogs() {
                 </td>
             `;
 
-            // Tıklama Olayı (Sadece detay varsa)
             if (hasDetails) {
                 tr.onclick = () => {
                     const detailRow = document.getElementById(detailRowId);
                     if (detailRow) {
                         detailRow.classList.toggle("hidden");
-                        // Arka plan rengini değiştirerek seçili olduğunu belli et
                         if(!detailRow.classList.contains("hidden")){
                             tr.classList.add("bg-gray-800");
                         } else {
@@ -1228,7 +1434,6 @@ function renderAuditLogs() {
             }
             tbody.appendChild(tr);
 
-            // --- DETAY SATIRI (GİZLİ) ---
             if (hasDetails) {
                 const trDetail = document.createElement("tr");
                 trDetail.id = detailRowId;
@@ -1252,11 +1457,17 @@ function renderAuditLogs() {
 
 function changeAuditPage(dir) {
     // Mevcut filtreye göre toplam sayfa sayısını hesapla
-    const filteredLogs = allAuditLogs.filter(l => {
-        const logType = l.type || "panel";
-        return logType === currentAuditFilter;
-    });
+    const playerFilterVal = document.getElementById("audit-player-filter-input")?.value.toLowerCase() || "";
     
+    const filteredLogs = allAuditLogs.filter((l) => {
+        const logType = l.type || "panel";
+        if (logType !== currentAuditFilter) return false;
+        if (currentAuditFilter === 'game' && playerFilterVal) {
+            if (!l.source.toLowerCase().includes(playerFilterVal)) return false;
+        }
+        return true;
+    });
+
     const totalPages = Math.ceil(filteredLogs.length / auditPageSize) || 1;
     const newPage = auditPageIndex + dir;
 
@@ -1268,8 +1479,6 @@ function changeAuditPage(dir) {
 
 function updateAuditList(list) {
     allAuditLogs = list;
-    // Yeni veri geldiğinde sayfa 1'e dönmek istersen:
-    // auditPageIndex = 1; 
     renderAuditLogs();
 }
 
@@ -1446,242 +1655,316 @@ window.deleteWorld = (n) => {
 
 // ============================================================================
 // 14-) AYARLAR VE YÖNETİCİLER (SETTINGS & OPS)
-// ============================================================================
-// 14.1-) initSettingsPage
-// ============================================================================
-// app.js -> initSettingsPage (OTOMATİK 64x64 DÖNÜŞTÜRME EKLENDİ)
-// ============================================================================
-
+// 14.1-) initSettingsPage (Auto-Restart Destekli)
 function initSettingsPage() {
-  // 1. Mevcut ayarları iste
-  socket.emit("get-settings");
+  socket.off("settings-data");
+  socket.off("sistem-bilgileri");
 
-  // 2. [DÜZELTME] Sistem RAM bilgisini özellikle iste (Tetikleyici)
+  socket.emit("get-settings");
   socket.emit("get-system-info");
 
   const ramSlider = document.getElementById("set-ram-slider");
   const ramDisplay = document.getElementById("set-ram-display");
-  const ramMaxLabel = document.getElementById("ram-max-label"); 
+  const ramMaxLabel = document.getElementById("ram-max-label");
   const btnSave = document.getElementById("btn-save-settings");
+  const chkAutoRestart = document.getElementById("set-auto-restart"); // YENİ
 
-  // A) Varsayılan Durum (Cevap gelene kadar)
-  if(ramSlider) {
-      ramSlider.max = 8; // İsteğin üzerine geçici max 8
-      if(parseInt(ramSlider.value) > 8) ramSlider.value = 8;
-  }
-  if(ramMaxLabel) ramMaxLabel.textContent = "(Hesaplanıyor...)";
+  const modalConfirm = document.getElementById("settings-confirm-modal");
+  const changesListDiv = document.getElementById("settings-changes-list");
+  const btnConfirm = document.getElementById("btn-confirm-changes");
+  const btnCancel = document.getElementById("btn-cancel-changes");
 
-  // B) Slider Görsel Güncelleme
-  if (ramSlider && ramDisplay) {
+  let kayitliRamMiktari = 4;
+  let originalSettings = {};
+
+  const fieldMap = [
+    { id: "set-motd", key: "motd", name: "Sunucu Açıklaması", type: "text" },
+    {
+      id: "set-max-players",
+      key: "max-players",
+      name: "Max Oyuncu",
+      type: "number",
+    },
+    { id: "set-server-port", key: "server-port", name: "Port", type: "number" },
+    {
+      id: "set-view-distance",
+      key: "view-distance",
+      name: "Görüş Mesafesi",
+      type: "number",
+    },
+    {
+      id: "set-spawn-protection",
+      key: "spawn-protection",
+      name: "Spawn Koruması",
+      type: "number",
+    },
+    { id: "set-gamemode", key: "gamemode", name: "Oyun Modu", type: "select" },
+    { id: "set-difficulty", key: "difficulty", name: "Zorluk", type: "select" },
+    { id: "set-pvp", key: "pvp", name: "PVP", type: "checkbox" },
+    {
+      id: "set-allow-flight",
+      key: "allow-flight",
+      name: "Uçuş",
+      type: "checkbox",
+    },
+    {
+      id: "set-online-mode",
+      key: "online-mode",
+      name: "Online Mode",
+      type: "checkbox",
+    },
+    {
+      id: "set-white-list",
+      key: "white-list",
+      name: "Whitelist",
+      type: "checkbox",
+    },
+  ];
+
+  if (ramSlider) {
+    ramSlider.max = 8;
     ramSlider.oninput = () => {
       ramDisplay.textContent = `${ramSlider.value}G`;
     };
   }
+  if (ramMaxLabel) ramMaxLabel.textContent = "(Hesaplanıyor...)";
 
-  // C) [DÜZELTME] Backend'den RAM bilgisi gelince çalışacak kısım
-  // Önce eski dinleyiciyi kapatıyoruz ki üst üste binmesin
-  socket.off("sistem-bilgileri"); 
-  socket.on("sistem-bilgileri", (data) => {
-      if(ramSlider) {
-          // Yeni maksimum değeri ata
-          ramSlider.max = data.maxSlider;
-          ramSlider.min = 4;
-          
-          // Eğer önceden seçili RAM (örn: 12GB), yeni limitten (örn: 8GB) büyükse düşür.
-          if(parseInt(ramSlider.value) > data.maxSlider) {
-              ramSlider.value = data.maxSlider;
-              ramDisplay.textContent = `${data.maxSlider}G`;
-          }
+  socket.on("settings-data", (d) => {
+    if (!document.getElementById("set-ram-slider")) return;
+    originalSettings = JSON.parse(JSON.stringify(d));
 
-          // Label'ı güncelle
-          if(ramMaxLabel) {
-              ramMaxLabel.textContent = `(Sistem Limiti: ${data.maxSlider} GB)`;
-              // Görsel olarak da hesaplandığını belli etmek için rengi değiştir
-              ramMaxLabel.classList.remove("text-gray-500");
-              ramMaxLabel.classList.add("text-green-400");
-          }
-      }
+    if (d.ram) {
+      kayitliRamMiktari = parseInt(d.ram);
+      originalSettings.ramAmount = kayitliRamMiktari;
+    }
+
+    // Auto Restart Yükle
+    if (chkAutoRestart) {
+      chkAutoRestart.checked = d.config && d.config.autoRestart === true;
+      originalSettings.autoRestart = d.config ? d.config.autoRestart : false;
+    }
+
+    if (ramSlider) {
+      if (kayitliRamMiktari > parseInt(ramSlider.max))
+        ramSlider.max = kayitliRamMiktari;
+      ramSlider.value = kayitliRamMiktari;
+      if (ramDisplay) ramDisplay.textContent = `${kayitliRamMiktari}G`;
+    }
+
+    if (d.props) {
+      fieldMap.forEach((f) => {
+        const el = document.getElementById(f.id);
+        if (!el) return;
+        const val = d.props[f.key];
+        if (f.type === "checkbox") el.checked = val === "true";
+        else el.value = val || "";
+      });
+    }
   });
 
-  // D) Kaydet Butonu ve Diğerleri (Aynı kalıyor)
+  socket.on("sistem-bilgileri", (data) => {
+    if (!document.getElementById("set-ram-slider")) return;
+    if (ramSlider) {
+      ramSlider.min = 4;
+      ramSlider.max = data.maxSlider;
+      if (kayitliRamMiktari > data.maxSlider)
+        kayitliRamMiktari = data.maxSlider;
+      ramSlider.value = kayitliRamMiktari;
+      if (ramDisplay) ramDisplay.textContent = `${kayitliRamMiktari}G`;
+      if (ramMaxLabel) {
+        ramMaxLabel.textContent = `(Sistem Limiti: ${data.maxSlider} GB)`;
+        ramMaxLabel.classList.remove("text-gray-500");
+        ramMaxLabel.classList.add("text-green-400");
+      }
+    }
+  });
+
   if (btnSave) {
     btnSave.onclick = () => {
-      btnSave.innerHTML = `<svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> KAYDEDİLİYOR...`;
+      let changes = [];
+      const currentRam = parseInt(ramSlider.value);
+      const oldRam = originalSettings.ramAmount || 4;
+      if (currentRam !== oldRam)
+        changes.push({
+          name: "RAM Miktarı",
+          old: `${oldRam} GB`,
+          new: `${currentRam} GB`,
+        });
 
-      const d = {
-        ram: document.getElementById("set-ram-slider").value,
-        props: {
-          motd: document.getElementById("set-motd").value,
-          "max-players": document.getElementById("set-max-players").value,
-          "server-port": document.getElementById("set-server-port").value,
-          "view-distance": document.getElementById("set-view-distance").value,
-          "spawn-protection": document.getElementById("set-spawn-protection").value,
-          gamemode: document.getElementById("set-gamemode").value,
-          difficulty: document.getElementById("set-difficulty").value,
-          pvp: document.getElementById("set-pvp").checked,
-          "allow-flight": document.getElementById("set-allow-flight").checked,
-          "online-mode": document.getElementById("set-online-mode").checked,
-          "white-list": document.getElementById("set-white-list").checked,
-        },
-      };
-      socket.emit("save-settings", d);
+      // Auto Restart Kontrol
+      const curAR = chkAutoRestart.checked;
+      const oldAR = originalSettings.autoRestart === true;
+      if (curAR !== oldAR)
+        changes.push({
+          name: "Oto-Restart",
+          old: oldAR ? "Aktif" : "Pasif",
+          new: curAR ? "Aktif" : "Pasif",
+        });
 
-      setTimeout(() => {
-        btnSave.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg> AYARLARI KAYDET`;
-      }, 1000);
-    };
-  }
+      fieldMap.forEach((f) => {
+        const el = document.getElementById(f.id);
+        if (!el) return;
+        let currentVal, oldVal;
+        if (f.type === "checkbox") {
+          currentVal = el.checked;
+          oldVal = originalSettings.props[f.key] === "true";
+        } else {
+          currentVal = String(el.value);
+          oldVal = String(originalSettings.props[f.key] || "");
+        }
+        if (String(currentVal) !== String(oldVal)) {
+          if (f.type === "checkbox") {
+            oldVal = oldVal ? "Açık" : "Kapalı";
+            currentVal = currentVal ? "Açık" : "Kapalı";
+          }
+          changes.push({
+            name: f.name,
+            old: oldVal || "(Boş)",
+            new: currentVal || "(Boş)",
+          });
+        }
+      });
 
-  // ---------------------------------------------------------
-  // 2. SUNUCU İKONU YÜKLEME (OTOMATİK RESİZE)
-  // ---------------------------------------------------------
-  const iconInput = document.getElementById("icon-upload");
-  const iconPreview = document.getElementById("server-icon-preview");
-  const btnDeleteIcon = document.getElementById("btn-delete-icon");
-
-  // Mevcut ikonu göster
-  if (iconPreview) {
-    iconPreview.src = `/server-icon.png?t=${Date.now()}`;
-    iconPreview.onerror = () => {
-      iconPreview.src = "https://via.placeholder.com/64?text=MC";
-    };
-  }
-
-  if (iconInput) {
-    iconInput.onchange = async () => {
-      const file = iconInput.files[0];
-      if (!file) return;
-
-      // Dosya türü kontrolü (Genişletildi: JPG, PNG, WEBP kabul edelim, sonra PNG'ye çevireceğiz)
-      if (!file.type.match("image.*")) {
-        alert("Lütfen geçerli bir resim dosyası seçin!");
+      if (changes.length === 0) {
+        alert("Değişiklik yok.");
         return;
       }
 
-      // UI: Yükleniyor efekti
-      if (iconPreview) iconPreview.style.opacity = "0.3";
+      changesListDiv.innerHTML = "";
+      changes.forEach((c) => {
+        const item = document.createElement("div");
+        item.className =
+          "flex justify-between items-center border-b border-gray-700 pb-1 last:border-0";
+        item.innerHTML = `<span class="text-gray-400">${c.name}</span><div class="flex items-center gap-2"><span class="text-red-400 line-through text-xs opacity-70">${c.old}</span><span class="text-gray-500">➜</span><span class="text-green-400 font-bold">${c.new}</span></div>`;
+        changesListDiv.appendChild(item);
+      });
+      modalConfirm.classList.remove("hidden");
+    };
+  }
 
-      // --- RESİZE İŞLEMİ (CANVAS API) ---
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+  if (btnCancel) btnCancel.onclick = () => modalConfirm.classList.add("hidden");
 
-      reader.onload = (readerEvent) => {
-        const img = new Image();
-        img.src = readerEvent.target.result;
-
-        img.onload = () => {
-          // 1. Sanal bir canvas oluştur
-          const canvas = document.createElement("canvas");
-          const ctx = canvas.getContext("2d");
-
-          // 2. Minecraft standardı: 64x64 piksel
-          canvas.width = 64;
-          canvas.height = 64;
-
-          // 3. Resmi 64x64 kutusuna sığdır (Stretch)
-          // İstersen aspect ratio korumalı da yapılabilir ama MC ikonları genelde kare olur.
-          ctx.drawImage(img, 0, 0, 64, 64);
-
-          // 4. Canvas'ı PNG Blob'una dönüştür
-          canvas.toBlob(async (blob) => {
-            if (!blob) {
-              alert("Dönüştürme hatası!");
-              if (iconPreview) iconPreview.style.opacity = "1";
-              return;
-            }
-
-            // 5. FormData oluştur ve sunucuya gönder
-            const fd = new FormData();
-            // 'server-icon.png' ismini zorluyoruz, sunucu bunu kullanacak
-            fd.append("icon", blob, "server-icon.png");
-
-            try {
-              const res = await fetch("/api/upload-icon", {
-                method: "POST",
-                body: fd,
-              });
-              const data = await res.json();
-
-              if (data.success) {
-                if (iconPreview) {
-                  // Cache kırmak için timestamp
-                  iconPreview.src = `/server-icon.png?t=${Date.now()}`;
-                  iconPreview.style.opacity = "1";
-                }
-                alert("✅ İkon 64x64 boyutuna dönüştürüldü ve yüklendi!");
-              } else {
-                alert("Hata: " + (data.error || "Sunucu hatası."));
-                if (iconPreview) iconPreview.style.opacity = "1";
-              }
-            } catch (e) {
-              console.error(e);
-              alert("Yükleme sırasında hata oluştu.");
-              if (iconPreview) iconPreview.style.opacity = "1";
-            }
-          }, "image/png"); // Çıktı formatı: PNG
-        };
+  if (btnConfirm) {
+    btnConfirm.onclick = () => {
+      const d = {
+        ram: ramSlider.value,
+        config: { autoRestart: chkAutoRestart.checked },
+        props: {},
       };
+      fieldMap.forEach((f) => {
+        const el = document.getElementById(f.id);
+        if (f.type === "checkbox") d.props[f.key] = el.checked;
+        else d.props[f.key] = el.value;
+      });
+
+      btnConfirm.innerHTML = "KAYDEDİLİYOR...";
+      btnConfirm.disabled = true;
+      socket.emit("save-settings", d);
+
+      setTimeout(() => {
+        modalConfirm.classList.add("hidden");
+        btnConfirm.innerHTML = "KAYDET VE UYGULA";
+        btnConfirm.disabled = false;
+        socket.emit("get-settings");
+      }, 1000);
+    };
+  }
+  // --- RESOURCE PACK MANTIĞI ---
+  const rpInput = document.getElementById("rp-upload");
+  const rpStatus = document.getElementById("rp-status");
+  const btnDeleteRP = document.getElementById("btn-delete-rp");
+
+  // Sayfa açılınca durumu kontrol et
+  if (rpStatus) {
+    fetch("/api/check-rp")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.exists) {
+          rpStatus.textContent = "✅ Paket Yüklü";
+          rpStatus.className =
+            "text-[10px] text-green-400 mb-2 truncate font-bold";
+        } else {
+          rpStatus.textContent = "Yüklü paket yok.";
+          rpStatus.className = "text-[10px] text-gray-500 mb-2 truncate";
+        }
+      });
+  }
+
+  // Yükleme İşlemi
+  if (rpInput) {
+    rpInput.onchange = async () => {
+      const file = rpInput.files[0];
+      if (!file) return;
+
+      if (!file.name.endsWith(".zip")) {
+        alert("Lütfen sadece .zip dosyası yükleyin!");
+        return;
+      }
+
+      // Yükleniyor efekti
+      if (rpStatus) {
+        rpStatus.textContent = "⏳ Yükleniyor ve Hash hesaplanıyor...";
+        rpStatus.className =
+          "text-[10px] text-yellow-400 mb-2 truncate animate-pulse";
+      }
+
+      const fd = new FormData();
+      fd.append("pack", file);
+
+      try {
+        const res = await fetch("/api/upload-rp", { method: "POST", body: fd });
+        const data = await res.json();
+
+        if (data.success) {
+          alert(
+            `Başarılı!\nSHA1 Hash: ${data.sha1}\n\nSunucu ayarları güncellendi. Etkili olması için sunucuyu yeniden başlatın.`
+          );
+          if (rpStatus) {
+            rpStatus.textContent = "✅ Paket Yüklü";
+            rpStatus.className =
+              "text-[10px] text-green-400 mb-2 truncate font-bold";
+          }
+        } else {
+          alert("Hata: " + (data.error || "Bilinmiyor"));
+          if (rpStatus) rpStatus.textContent = "Hata oluştu.";
+        }
+      } catch (e) {
+        alert("Sunucu hatası.");
+      }
+      rpInput.value = ""; // Inputu temizle
     };
   }
 
   // Silme İşlemi
-  if (btnDeleteIcon) {
-    btnDeleteIcon.onclick = async () => {
+  if (btnDeleteRP) {
+    btnDeleteRP.onclick = async () => {
       if (
         !confirm(
-          "İkonu silmek istediğinize emin misiniz? Varsayılan MC ikonu görünecektir."
+          "Kaynak paketini silmek ve sunucu ayarlarından kaldırmak istiyor musunuz?"
         )
       )
         return;
+
       try {
-        await fetch("/api/delete-icon", { method: "DELETE" });
-        if (iconPreview)
-          iconPreview.src = "https://via.placeholder.com/64?text=MC";
-        alert("İkon silindi.");
+        const res = await fetch("/api/delete-rp", { method: "DELETE" });
+        const data = await res.json();
+
+        if (data.success) {
+          alert("Paket silindi.");
+          if (rpStatus) {
+            rpStatus.textContent = "Yüklü paket yok.";
+            rpStatus.className = "text-[10px] text-gray-500 mb-2 truncate";
+          }
+        } else {
+          alert("Hata veya paket zaten yok.");
+        }
       } catch (e) {
-        alert("Silinemedi.");
+        alert("Hata.");
       }
     };
   }
 
-  // ---------------------------------------------------------
-  // 3. WHITELIST MODAL YÖNETİMİ
-  // ---------------------------------------------------------
-  const btnManageWhitelist = document.getElementById("btn-manage-whitelist");
-  const modalWhitelist = document.getElementById("whitelist-modal");
-  const btnCloseWhitelist = document.getElementById("close-whitelist-modal");
-  const formWhitelist = document.getElementById("whitelist-add-form");
-  const inputWhitelist = document.getElementById("whitelist-input");
-
-  if (btnManageWhitelist) {
-    btnManageWhitelist.onclick = () => {
-      socket.emit("get-whitelist");
-      if (modalWhitelist) modalWhitelist.classList.remove("hidden");
-    };
-  }
-
-  if (btnCloseWhitelist) {
-    btnCloseWhitelist.onclick = () => {
-      if (modalWhitelist) modalWhitelist.classList.add("hidden");
-    };
-  }
-
-  if (modalWhitelist) {
-    modalWhitelist.onclick = (e) => {
-      if (e.target === modalWhitelist) modalWhitelist.classList.add("hidden");
-    };
-  }
-
-  if (formWhitelist) {
-    formWhitelist.onsubmit = (e) => {
-      e.preventDefault();
-      const name = inputWhitelist.value.trim();
-      if (name) {
-        socket.emit("whitelist-add", name);
-        inputWhitelist.value = "";
-      }
-    };
-  }
+  setupSettingsExtraLogic();
 }
 
 // 14.2-) initOpsPage
@@ -2302,32 +2585,52 @@ function loadSetupScreenVersions() {
 // ============================================================================
 // 19-) GELİŞMİŞ OYUNCU YÖNETİMİ (SEKMELİ YAPI)
 // ============================================================================
-// 19.1-) switchPlayerTab
+// 19.1-) switchPlayerTab (GÜNCELLENDİ - STATS EKLENDİ)
 window.switchPlayerTab = (tabName) => {
-  // Sekmeleri gizle
-  ["online", "ops", "banned", "ipban"].forEach((t) => {
-    document.getElementById(`tab-content-${t}`).classList.add("hidden");
-    const btn = document.getElementById(`tab-btn-${t}`);
-    if (btn) {
-      btn.classList.remove("bg-blue-600", "text-white", "shadow-lg");
-      btn.classList.add("bg-gray-700", "text-gray-400");
+    // Tüm sekmelerin listesi
+    const tabs = ["online", "all", "ops", "banned", "ipban", "stats"];
+
+    // 1. Önce hepsini gizle ve pasif yap
+    tabs.forEach((t) => {
+        const content = document.getElementById(`tab-content-${t}`);
+        const btn = document.getElementById(`tab-btn-${t}`);
+        
+        // İçeriği gizle
+        if (content) content.classList.add("hidden");
+        
+        // Butonu pasif hale getir
+        if (btn) {
+            // Aktif renkleri temizle
+            btn.classList.remove("bg-blue-600", "bg-yellow-600", "text-white", "shadow-lg");
+            // Pasif renkleri ekle
+            btn.classList.add("bg-gray-700", "text-gray-400");
+        }
+    });
+
+    // 2. Seçilen sekmeyi aç ve aktif yap
+    const activeContent = document.getElementById(`tab-content-${tabName}`);
+    const activeBtn = document.getElementById(`tab-btn-${tabName}`);
+
+    if (activeContent) activeContent.classList.remove("hidden");
+    
+    if (activeBtn) {
+        activeBtn.classList.remove("bg-gray-700", "text-gray-400");
+        
+        // "stats" sekmesi ise SARI, diğerleri ise MAVİ yap
+        if (tabName === 'stats') {
+            activeBtn.classList.add("bg-yellow-600", "text-white", "shadow-lg");
+        } else {
+            activeBtn.classList.add("bg-blue-600", "text-white", "shadow-lg");
+        }
     }
-  });
 
-  // Seçileni aç
-  document.getElementById(`tab-content-${tabName}`).classList.remove("hidden");
-  const activeBtn = document.getElementById(`tab-btn-${tabName}`);
-  if (activeBtn) {
-    activeBtn.classList.remove("bg-gray-700", "text-gray-400");
-    activeBtn.classList.add("bg-blue-600", "text-white", "shadow-lg");
-  }
-
-  // Verileri İste
-  if (tabName === "ops") socket.emit("get-ops");
-  if (tabName === "banned") socket.emit("get-banned");
-  if (tabName === "ipban") socket.emit("get-banned-ips");
+    // 3. Gerekli veriyi sunucudan iste
+    if (tabName === "ops") socket.emit("get-ops");
+    if (tabName === "banned") socket.emit("get-banned");
+    if (tabName === "ipban") socket.emit("get-banned-ips");
+    if (tabName === "all") socket.emit("get-all-players");
+    if (tabName === "stats") socket.emit("get-player-stats"); // [YENİ]
 };
-
 // 19.2-) updateIpBanList
 function updateIpBanList(list) {
   const c = document.getElementById("ip-ban-list-container");
@@ -2376,11 +2679,271 @@ const setupPlayersPage = () => {
         inpIp.value = "";
       }
     };
+  // [YENİ] Tüm Oyuncular Sayfalama Olayları
+  const limitSel = document.getElementById("all-players-limit");
+  const searchInp = document.getElementById("all-players-search");
+  const btnPrev = document.getElementById("btn-all-prev");
+  const btnNext = document.getElementById("btn-all-next");
+
+  if (limitSel) {
+    limitSel.onchange = () => {
+      allPlayersLimit = parseInt(limitSel.value);
+      allPlayersPage = 1;
+      renderAllPlayers();
+    };
+  }
+  if (searchInp) {
+    searchInp.oninput = () => {
+      allPlayersPage = 1;
+      renderAllPlayers();
+    };
+  }
+  if (btnPrev)
+    btnPrev.onclick = () => {
+      if (allPlayersPage > 1) {
+        allPlayersPage--;
+        renderAllPlayers();
+      }
+    };
+  if (btnNext)
+    btnNext.onclick = () => {
+      allPlayersPage++;
+      renderAllPlayers();
+    };
 };
 
 window.unbanIp = (ip) => {
   if (confirm("IP ban kaldırılsın mı?")) socket.emit("unban-ip", ip);
 };
+
+// --- [YENİ] TÜM OYUNCULAR VE ENVANTER MANTIĞI ---
+
+// 1. Sunucudan Listeyi Al
+socket.on("all-players-data", (list) => {
+  allPlayersData = list; // {name, uuid, online}
+  renderAllPlayers();
+});
+
+// 2. Listeyi Filtrele ve Çiz
+function renderAllPlayers() {
+  const container = document.getElementById("all-players-list");
+  const pageInfo = document.getElementById("all-page-info");
+  const searchVal = document
+    .getElementById("all-players-search")
+    .value.toLowerCase();
+
+  if (!container) return;
+
+  // A) Filtreleme (Arama)
+  let filtered = allPlayersData.filter((p) =>
+    p.name.toLowerCase().includes(searchVal)
+  );
+
+  // B) Sıralama (Online En Üstte, Sonra A-Z)
+  filtered.sort((a, b) => {
+    if (a.online === b.online) return a.name.localeCompare(b.name);
+    return a.online ? -1 : 1;
+  });
+
+  // C) Sayfalama
+  const totalItems = filtered.length;
+  const totalPages = Math.ceil(totalItems / allPlayersLimit) || 1;
+  if (allPlayersPage > totalPages) allPlayersPage = 1;
+
+  const start = (allPlayersPage - 1) * allPlayersLimit;
+  const end = start + allPlayersLimit;
+  const pageItems = filtered.slice(start, end);
+
+  // D) HTML Basma
+  container.innerHTML = "";
+  if (pageItems.length === 0) {
+    container.innerHTML =
+      '<div class="col-span-full text-center text-gray-500">Oyuncu bulunamadı.</div>';
+  } else {
+    pageItems.forEach((p) => {
+      const isOnline = p.online;
+      const statusColor = isOnline ? "text-green-400" : "text-gray-500";
+      const borderClass = isOnline
+        ? "border-green-500/30 bg-green-900/10"
+        : "border-gray-700 bg-gray-800";
+
+      const div = document.createElement("div");
+      div.className = `p-3 rounded-lg border ${borderClass} flex items-center gap-3 cursor-pointer hover:bg-gray-700 transition group`;
+      div.onclick = () => openInventory(p.name, p.uuid);
+
+      div.innerHTML = `
+                <img src="https://mc-heads.net/avatar/${
+                  p.name
+                }/40" class="rounded shadow-sm">
+                <div class="overflow-hidden">
+                    <h4 class="font-bold text-sm text-gray-200 truncate group-hover:text-white">${
+                      p.name
+                    }</h4>
+                    <span class="text-[10px] ${statusColor} font-bold flex items-center gap-1">
+                        ${isOnline ? "● ONLINE" : "○ OFFLINE"}
+                    </span>
+                </div>
+                <div class="ml-auto opacity-0 group-hover:opacity-100 transition text-gray-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                </div>
+            `;
+      container.appendChild(div);
+    });
+  }
+
+  if (pageInfo) pageInfo.textContent = `${allPlayersPage} / ${totalPages}`;
+  document.getElementById("btn-all-prev").disabled = allPlayersPage === 1;
+  document.getElementById("btn-all-next").disabled =
+    allPlayersPage >= totalPages;
+}
+
+// 3. Envanter Açma İsteği
+function openInventory(name, uuid) {
+  document.getElementById("inv-player-name").textContent = name + " Envanteri";
+  document.getElementById(
+    "inv-player-head"
+  ).src = `https://mc-heads.net/avatar/${name}/32`;
+
+  // Temizle
+  const clear = (id) =>
+    (document.getElementById(id).innerHTML =
+      '<span class="text-xs p-2">Yükleniyor...</span>');
+  clear("inv-armor");
+  clear("inv-offhand");
+  clear("inv-main");
+  clear("inv-hotbar");
+  clear("inv-ender");
+
+  document.getElementById("inventory-modal").classList.remove("hidden");
+  socket.emit("get-player-inventory", { uuid });
+}
+// ============================================================================
+// [DÜZELTME] 1. OYUNCU ENVANTERİ (AYRI BLOK)
+// ============================================================================
+socket.on("player-inventory-data", (data) => {
+    if (!data) {
+        alert("Envanter verisi okunamadı!");
+        return;
+    }
+
+    // Slot Oluşturucu Yardımcı Fonksiyon (Sadece bu blok içinde lazım)
+    const createSlot = (item) => {
+        const div = document.createElement("div");
+        div.className = "mc-slot";
+        if (item) {
+            let itemId = item.id.replace("minecraft:", "");
+            const img = document.createElement("img");
+            img.src = `https://assets.mcasset.cloud/1.20.1/assets/minecraft/textures/item/${itemId}.png`;
+            img.onerror = () => {
+                img.src = `https://assets.mcasset.cloud/1.20.1/assets/minecraft/textures/block/${itemId}.png`;
+            };
+            img.className = "w-6 h-6 object-contain";
+            img.title = `${itemId} (x${item.Count})`;
+            div.appendChild(img);
+
+            if (item.Count > 1) {
+                const span = document.createElement("span");
+                span.className = "mc-item-count";
+                span.innerText = item.Count;
+                div.appendChild(span);
+            }
+        }
+        return div;
+    };
+
+    const fillGrid = (containerId, items, size, offset = 0) => {
+        const c = document.getElementById(containerId);
+        if(!c) return;
+        c.innerHTML = "";
+        for (let i = 0; i < size; i++) {
+            let found = items.find((x) => x.Slot === i + offset);
+            c.appendChild(createSlot(found));
+        }
+    };
+
+    // 1. Armor
+    const armorDiv = document.getElementById("inv-armor");
+    if(armorDiv) {
+        armorDiv.innerHTML = "";
+        [103, 102, 101, 100].forEach((slotId) => {
+            let item = data.inventory.find((x) => x.Slot === slotId);
+            armorDiv.appendChild(createSlot(item));
+        });
+    }
+
+    // 2. Offhand
+    const offhandDiv = document.getElementById("inv-offhand");
+    if(offhandDiv) {
+        offhandDiv.innerHTML = "";
+        let offItem = data.inventory.find((x) => x.Slot === -106);
+        offhandDiv.appendChild(createSlot(offItem));
+    }
+
+    // 3. Diğerleri
+    fillGrid("inv-main", data.inventory, 27, 9);
+    fillGrid("inv-hotbar", data.inventory, 9, 0);
+    fillGrid("inv-ender", data.ender, 27, 0);
+});
+
+// ============================================================================
+// [DÜZELTME] 2. İSTATİSTİK VERİSİ (AYRI BLOK - DIŞARIDA OLMALI)
+// ============================================================================
+socket.on("player-stats-data", (stats) => {
+    // 1. En Çok Oynayanlar
+    const sortedByTime = [...stats].sort((a, b) => b.playTime - a.playTime).slice(0, 10);
+    renderStatsList("stats-playtime-list", sortedByTime, (p, i) => `
+        <div class="flex items-center justify-between bg-black/20 p-2 rounded hover:bg-black/40 transition">
+            <div class="flex items-center gap-3">
+                <span class="font-mono text-gray-500 font-bold w-4 text-center">${i+1}.</span>
+                <img src="https://mc-heads.net/avatar/${p.name}/24" class="w-6 h-6 rounded shadow-sm">
+                <span class="text-sm font-bold text-gray-300">${p.name}</span>
+            </div>
+            <span class="text-xs font-mono font-bold text-blue-400">${p.playTime} Saat</span>
+        </div>
+    `);
+
+    // 2. En Çok Mob Öldürenler
+    const sortedByMobKills = [...stats].sort((a, b) => b.mobKills - a.mobKills).slice(0, 10);
+    renderStatsList("stats-kills-list", sortedByMobKills, (p, i) => `
+        <div class="flex items-center justify-between bg-black/20 p-2 rounded hover:bg-black/40 transition">
+            <div class="flex items-center gap-3">
+                <span class="font-mono text-gray-500 font-bold w-4 text-center">${i+1}.</span>
+                <img src="https://mc-heads.net/avatar/${p.name}/24" class="w-6 h-6 rounded shadow-sm">
+                <span class="text-sm font-bold text-gray-300">${p.name}</span>
+            </div>
+            <span class="text-xs font-mono font-bold text-green-400">${p.mobKills} Kill</span>
+        </div>
+    `);
+
+    // 3. En Çok Ölenler
+    const sortedByDeaths = [...stats].sort((a, b) => b.deaths - a.deaths).slice(0, 10);
+    renderStatsList("stats-deaths-list", sortedByDeaths, (p, i) => `
+        <div class="flex items-center justify-between bg-black/20 p-2 rounded hover:bg-black/40 transition">
+            <div class="flex items-center gap-3">
+                <span class="font-mono text-gray-500 font-bold w-4 text-center">${i+1}.</span>
+                <img src="https://mc-heads.net/avatar/${p.name}/24" class="w-6 h-6 rounded shadow-sm">
+                <span class="text-sm font-bold text-gray-300">${p.name}</span>
+            </div>
+            <span class="text-xs font-mono font-bold text-red-400">${p.deaths} Ölüm</span>
+        </div>
+    `);
+});
+
+// Yardımcı Render Fonksiyonu
+function renderStatsList(elementId, data, templateFunc) {
+    const container = document.getElementById(elementId);
+    if(!container) return;
+    
+    container.innerHTML = "";
+    if (data.length === 0) {
+        container.innerHTML = '<div class="text-center text-gray-500 text-xs py-4">Kayıtlı istatistik yok.</div>';
+        return;
+    }
+
+    data.forEach((player, index) => {
+        container.innerHTML += templateFunc(player, index);
+    });
+}
 
 // Uygulamayı Başlat
 initApp();
