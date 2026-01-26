@@ -1,3 +1,5 @@
+# İzinsiz Satışı ve Dağıtımı Yasaktır!
+
 # 🎮 Minecraft Web Yönetim Paneli (v3.0 - Ultimate)
 
 Bu proje, Minecraft sunucunuzu web tarayıcısı üzerinden **tam kapsamlı, modern ve etkileşimli** bir şekilde yönetmenizi sağlayan, **Node.js** tabanlı gelişmiş bir yönetim panelidir.
