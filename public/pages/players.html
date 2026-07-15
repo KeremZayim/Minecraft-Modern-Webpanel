@@ -83,7 +83,8 @@
 
         <div id="tab-content-ops" class="hidden">
             <div class="mb-4 flex gap-2">
-                <input type="text" id="op-input-name" placeholder="Oyuncu adı..." class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-blue-500 outline-none">
+                <input type="text" id="op-input-name" list="ops-players-datalist" placeholder="Oyuncu adı..." class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-2 text-white focus:border-blue-500 outline-none">
+                <datalist id="ops-players-datalist"></datalist>
                 <button id="btn-add-op" class="bg-blue-600 hover:bg-blue-700 text-white px-6 rounded-lg font-bold text-sm transition">EKLE</button>
             </div>
             <div id="ops-list-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
@@ -153,7 +154,7 @@
                     <img id="inv-player-head" src="" class="w-6 h-6 rounded-sm border border-gray-600">
                     <h3 id="inv-player-name" class="text-[#404040] font-bold text-lg font-minecraft">Oyuncu Envanteri</h3>
                 </div>
-                <button onclick="document.getElementById('inventory-modal').classList.add('hidden')" class="text-red-600 font-bold hover:bg-red-200 px-2 rounded">X</button>
+                <button onclick="closePlayerInventory()" class="text-red-600 font-bold hover:bg-red-200 px-2 rounded">X</button>
             </div>
 
             <div class="p-4 overflow-y-auto bg-[#c6c6c6] flex flex-col gap-4 font-minecraft text-[#404040]">

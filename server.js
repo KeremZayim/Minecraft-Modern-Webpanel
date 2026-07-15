@@ -48,27 +48,33 @@ const PLUGINS_DIR = path.join(MC_SERVER_PATH, "plugins");
 const BACKUP_DIR = path.join(__dirname, "backups");
 const uploadWorld = multer({ dest: path.join(__dirname, "temp_uploads") });
 
-const PORT = 3000;
+const PORT = 1717;
 
 let isManualStop = false; // Global değişken
+let serverStartTime = null;
+let currentTps = 20.0;
+let tpsInterval = null;
+let diskDataCache = { totalDisk: 0, freeDisk: 0, usedDisk: 0, diskPercent: 0, worldSize: 0 };
+let serverStatsHistory = [];
 
 // 2-) BAŞLANGIÇ KONTROLLERİ
-console.log("==========================================");
-console.log(">> PANEL BAŞLATILIYOR...");
+console.log("[Panel] Başlatılıyor...");
 
 // [YENİ] Config Klasörünü Kontrol Et / Oluştur
 if (!fs.existsSync(CONFIG_DIR)) {
-  console.log(">> 'config' klasörü oluşturuluyor...");
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  console.log("[Panel] 'config' klasörü oluşturuldu.");
+} else {
+  console.log("[Panel] 'config' klasörü doğrulandı.");
 }
 
 // Sunucu Klasörü Kontrolü
 if (!fs.existsSync(MC_SERVER_PATH)) {
-  console.error(`❌ HATA: '${SERVER_FOLDER_NAME}' klasörü bulunamadı!`);
+  console.error(`[Panel] ❌ HATA: '${SERVER_FOLDER_NAME}' klasörü bulunamadı!`);
 } else {
-  console.log("✅ Sunucu klasörü doğrulandı.");
+  console.log("[Panel] Sunucu klasörü doğrulandı.");
 }
-console.log("==========================================");
+
 
 const CPU_CORE_COUNT = os.cpus().length;
 const app = express();
@@ -91,7 +97,7 @@ function getFolderSize(dirPath) {
         const stats = fs.statSync(filePath);
         if (stats.isFile()) size += stats.size;
       });
-    } catch (e) {}
+    } catch (e) { }
   }
   return (size / 1024 / 1024).toFixed(2) + " MB";
 }
@@ -103,7 +109,7 @@ function logAudit(action, details, source = "Panel", type = "panel") {
   if (fs.existsSync(AUDIT_FILE))
     try {
       audits = JSON.parse(fs.readFileSync(AUDIT_FILE));
-    } catch (e) {}
+    } catch (e) { }
 
   const newLog = {
     time: new Date().toLocaleString("tr-TR"),
@@ -132,9 +138,9 @@ function sendDiscord(msg, type = "event") {
     else targetUrl = conf.eventsUrl;
 
     if (targetUrl && targetUrl.startsWith("http")) {
-      axios.post(targetUrl, { content: msg }).catch(() => {});
+      axios.post(targetUrl, { content: msg }).catch(() => { });
     }
-  } catch (e) {}
+  } catch (e) { }
 }
 
 // 3.4-) getDiscordConfig
@@ -301,6 +307,103 @@ function getSystemRamInfo() {
   }
 }
 
+// 3.16-) [YENİ] Java Sürümlerini Tarama
+let cachedJavaList = [];
+function getJavaVersionAsync(javaPath) {
+  return new Promise((resolve) => {
+    exec(`"${javaPath}" -version`, (error, stdout, stderr) => {
+      const output = (stdout || "") + (stderr || "");
+      const match = output.match(/(openjdk version|java version|openjdk|java)\s+"([^"]+)"/i);
+      if (match && match[2]) {
+        resolve(match[2]);
+      } else {
+        resolve(null);
+      }
+    });
+  });
+}
+
+async function scanJavaVersions() {
+  const javaList = [];
+
+  // 1. Sistem varsayılanı java'yı ekle
+  const defaultVersion = await getJavaVersionAsync("java");
+  if (defaultVersion) {
+    javaList.push({
+      name: `Sistem Varsayılanı (${defaultVersion})`,
+      path: "java",
+      version: defaultVersion
+    });
+  } else {
+    javaList.push({
+      name: "Sistem Varsayılanı (java)",
+      path: "java",
+      version: "Bilinmiyor"
+    });
+  }
+
+  // 2. Klasörleri tara (Windows)
+  const searchDirs = [
+    "C:\\Program Files\\Java",
+    "C:\\Program Files (x86)\\Java"
+  ];
+
+  for (const baseDir of searchDirs) {
+    if (fs.existsSync(baseDir)) {
+      try {
+        const folders = fs.readdirSync(baseDir);
+        for (const folder of folders) {
+          const javaBinPath = path.join(baseDir, folder, "bin", "java.exe");
+          if (fs.existsSync(javaBinPath)) {
+            if (!javaList.some(item => item.path.toLowerCase() === javaBinPath.toLowerCase())) {
+              const version = await getJavaVersionAsync(javaBinPath);
+              javaList.push({
+                name: `${folder} (${version || 'Bilinmiyor'})`,
+                path: javaBinPath,
+                version: version || "Bilinmiyor"
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Klasör tarama hatası: " + baseDir, e);
+      }
+    }
+  }
+
+  // 3. Registry'den ek tarama yapalım (Windows için)
+  try {
+    const registryPaths = await new Promise((resolve) => {
+      const cmd = `powershell -command "Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\JavaSoft\\JDK\\*', 'HKLM:\\SOFTWARE\\JavaSoft\\Java Runtime Environment\\*', 'HKLM:\\SOFTWARE\\JavaSoft\\Java Development Kit\\*' -ErrorAction SilentlyContinue | ForEach-Object { $_.JavaHome }"`;
+      exec(cmd, (err, stdout) => {
+        if (err || !stdout) return resolve([]);
+        const pathsFound = stdout.split(/\r?\n/).map(p => p.trim()).filter(p => p.length > 0);
+        resolve([...new Set(pathsFound)]); // Benzersiz yollar
+      });
+    });
+
+    for (const jHome of registryPaths) {
+      const javaBinPath = path.join(jHome, "bin", "java.exe");
+      if (fs.existsSync(javaBinPath)) {
+        if (!javaList.some(item => item.path.toLowerCase() === javaBinPath.toLowerCase())) {
+          const version = await getJavaVersionAsync(javaBinPath);
+          const folderName = path.basename(jHome);
+          javaList.push({
+            name: `${folderName} (${version || 'Registry'})`,
+            path: javaBinPath,
+            version: version || "Bilinmiyor"
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Registry tarama hatası:", e);
+  }
+
+  return javaList;
+}
+
+
 // 4-) MULTER AYARLARI (DOSYA YÜKLEME)
 const upload = multer({
   storage: multer.diskStorage({
@@ -420,58 +523,279 @@ app.post("/api/plugins/upload", uploadPlugin.array("files"), (req, res) => {
 });
 
 app.get("/api/plugins/search", async (req, res) => {
-  const query = req.query.q;
-  if (!query) return res.json([]);
+  const query = (req.query.q || "").trim();
+  const source = req.query.source || "all";
+
+  const promises = [];
+
+  if (source === "all" || source === "spigot") {
+    promises.push((async () => {
+      try {
+        let url = "";
+        let params = {};
+        if (query) {
+          url = `https://api.spiget.org/v2/search/resources/${encodeURIComponent(query)}`;
+          params = { size: 12, fields: "id,name,tag,downloads,rating,icon" };
+        } else {
+          url = `https://api.spiget.org/v2/resources`;
+          params = { size: 12, sort: "-downloads", fields: "id,name,tag,downloads,rating,icon" };
+        }
+
+        const response = await axios.get(url, {
+          params: params,
+          headers: { "User-Agent": "MC-WebPanel/3.0" },
+        });
+
+        if (Array.isArray(response.data)) {
+          let mapped = response.data.map((item) => {
+            const downloads = item.downloads || 0;
+            let matchScore = 0;
+            if (query) {
+              const lowerName = item.name.toLowerCase();
+              const lowerQ = query.toLowerCase();
+              if (lowerName === lowerQ) matchScore = 1000000000;
+              else if (lowerName.startsWith(lowerQ)) matchScore = 500000000;
+              else if (lowerName.includes(lowerQ)) matchScore = 100000000;
+            }
+            return {
+              id: item.id.toString(),
+              name: item.name,
+              tag: item.tag || "",
+              downloads: downloads,
+              rating: { average: item.rating ? (item.rating.average || 0.0) : 0.0 },
+              icon: { url: (item.icon && item.icon.url) ? (item.icon.url.startsWith("http") ? item.icon.url : `https://www.spigotmc.org/${item.icon.url}`) : "https://static.spigotmc.org/img/spigot.png" },
+              source: "spigot",
+              score: matchScore + downloads
+            };
+          });
+
+          if (query) {
+            mapped = mapped.filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
+          }
+          return mapped;
+        }
+      } catch (e) {
+        console.error("Spiget arama hatası:", e.message);
+      }
+      return [];
+    })());
+  }
+
+  if (source === "all" || source === "modrinth") {
+    promises.push((async () => {
+      try {
+        let params = { facets: '[["project_type:plugin"]]', limit: 12 };
+        if (query) {
+          params.query = query;
+        }
+
+        const response = await axios.get(`https://api.modrinth.com/v2/search`, {
+          params: params,
+          headers: { "User-Agent": "MC-WebPanel/3.0" },
+        });
+
+        if (response.data && Array.isArray(response.data.hits)) {
+          let mapped = response.data.hits.map((hit) => {
+            const downloads = hit.downloads || 0;
+            let matchScore = 0;
+            if (query) {
+              const lowerName = hit.title.toLowerCase();
+              const lowerQ = query.toLowerCase();
+              if (lowerName === lowerQ) matchScore = 1000000000;
+              else if (lowerName.startsWith(lowerQ)) matchScore = 500000000;
+              else if (lowerName.includes(lowerQ)) matchScore = 100000000;
+            }
+            return {
+              id: hit.slug || hit.project_id,
+              name: hit.title,
+              tag: hit.description || "",
+              downloads: downloads,
+              rating: { average: 5.0 },
+              icon: { url: hit.icon_url || "https://cdn.modrinth.com/assets/logo.svg" },
+              source: "modrinth",
+              score: matchScore + downloads
+            };
+          });
+
+          if (query) {
+            mapped = mapped.filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
+          }
+          return mapped;
+        }
+      } catch (e) {
+        console.error("Modrinth arama hatası:", e.message);
+      }
+      return [];
+    })());
+  }
+
+  if (source === "all" || source === "devbukkit") {
+    promises.push((async () => {
+      try {
+        let params = { gameId: 432, classId: 5, pageSize: 12 };
+        if (query) {
+          params.searchFilter = query;
+        } else {
+          params.sortField = 2; // Popularity
+          params.sortOrder = "desc";
+        }
+
+        const response = await axios.get(`https://api.curse.tools/v1/cf/mods/search`, {
+          params: params,
+          headers: { "User-Agent": "MC-WebPanel/3.0" },
+        });
+
+        if (response.data && Array.isArray(response.data.data)) {
+          let mapped = response.data.data.map((item) => {
+            const downloads = item.downloadCount || 0;
+            let matchScore = 0;
+            if (query) {
+              const lowerName = item.name.toLowerCase();
+              const lowerQ = query.toLowerCase();
+              if (lowerName === lowerQ) matchScore = 1000000000;
+              else if (lowerName.startsWith(lowerQ)) matchScore = 500000000;
+              else if (lowerName.includes(lowerQ)) matchScore = 100000000;
+            }
+            return {
+              id: item.id.toString(),
+              name: item.name,
+              tag: item.summary || "",
+              downloads: downloads,
+              rating: { average: 5.0 },
+              icon: { url: (item.logo && item.logo.thumbnailUrl) ? item.logo.thumbnailUrl : "https://dev.bukkit.org/assets/images/favicon.ico" },
+              source: "devbukkit",
+              score: matchScore + downloads
+            };
+          });
+
+          if (query) {
+            mapped = mapped.filter(item => item.name.toLowerCase().includes(query.toLowerCase()));
+          }
+          return mapped;
+        }
+      } catch (e) {
+        console.error("DevBukkit arama hatası:", e.message);
+      }
+      return [];
+    })());
+  }
+
   try {
-    const response = await axios.get(`https://api.modrinth.com/v2/search`, {
-      params: { query: query, facets: '[["project_type:plugin"]]', limit: 12 },
-      headers: { "User-Agent": "MC-WebPanel/3.0" },
-    });
-    const mappedData = response.data.hits.map((hit) => ({
-      id: hit.slug,
-      name: hit.title,
-      tag: hit.description,
-      downloads: hit.downloads,
-      rating: { average: 5.0 },
-      icon: { url: hit.icon_url || "https://cdn.modrinth.com/assets/logo.svg" },
-    }));
-    res.json(mappedData);
-  } catch (e) {
+    const results = await Promise.all(promises);
+    let merged = [];
+    results.forEach((r) => { merged = merged.concat(r); });
+    merged.sort((a, b) => b.score - a.score);
+    res.json(merged);
+  } catch (err) {
+    console.error("Arama birleştirme hatası:", err);
     res.json([]);
   }
 });
 
 app.post("/api/plugins/install-remote", async (req, res) => {
-  const { id, name } = req.body;
+  const { id, name, source } = req.body;
   if (!id) return res.json({ success: false, error: "ID eksik." });
-  try {
-    const versionRes = await axios.get(
-      `https://api.modrinth.com/v2/project/${id}/version`,
-      { headers: { "User-Agent": "MC-WebPanel/3.0" } }
-    );
-    if (!versionRes.data || versionRes.data.length === 0)
-      return res.json({ success: false, error: "Sürüm yok." });
-    const latestVersion = versionRes.data[0];
-    const primaryFile =
-      latestVersion.files.find((f) => f.primary) || latestVersion.files[0];
-    const targetPath = path.join(PLUGINS_DIR, primaryFile.filename);
-    const writer = fs.createWriteStream(targetPath);
-    const response = await axios({
-      url: primaryFile.url,
-      method: "GET",
-      responseType: "stream",
-    });
-    response.data.pipe(writer);
-    writer.on("finish", () => {
-      logAudit("Plugin", `Marketten kuruldu: ${primaryFile.filename}`);
-      io.emit("plugins-data", getPlugins());
-      res.json({ success: true });
-    });
-    writer.on("error", () =>
-      res.json({ success: false, error: "Yazma hatası." })
-    );
-  } catch (e) {
-    res.json({ success: false, error: "İndirme başarısız." });
+  const activeSource = source || "modrinth";
+
+  if (activeSource === "modrinth") {
+    try {
+      const versionRes = await axios.get(
+        `https://api.modrinth.com/v2/project/${id}/version`,
+        { headers: { "User-Agent": "MC-WebPanel/3.0" } }
+      );
+      if (!versionRes.data || versionRes.data.length === 0)
+        return res.json({ success: false, error: "Sürüm yok." });
+      const latestVersion = versionRes.data[0];
+      const primaryFile =
+        latestVersion.files.find((f) => f.primary) || latestVersion.files[0];
+      const targetPath = path.join(PLUGINS_DIR, primaryFile.filename);
+      const writer = fs.createWriteStream(targetPath);
+      const response = await axios({
+        url: primaryFile.url,
+        method: "GET",
+        responseType: "stream",
+      });
+      response.data.pipe(writer);
+      writer.on("finish", () => {
+        logAudit("Plugin", `Marketten kuruldu (Modrinth): ${primaryFile.filename}`);
+        io.emit("plugins-data", getPlugins());
+        res.json({ success: true });
+      });
+      writer.on("error", () =>
+        res.json({ success: false, error: "Yazma hatası." })
+      );
+    } catch (e) {
+      res.json({ success: false, error: "İndirme başarısız." });
+    }
+  } else if (activeSource === "spigot") {
+    try {
+      const downloadUrl = `https://api.spiget.org/v2/resources/${id}/download`;
+      const response = await axios({
+        url: downloadUrl,
+        method: "GET",
+        responseType: "stream",
+        headers: { "User-Agent": "MC-WebPanel/3.0" }
+      });
+
+      let filename = `${name.replace(/[^a-zA-Z0-9_\.-]/g, "_")}.jar`;
+      const disposition = response.headers["content-disposition"];
+      if (disposition && disposition.includes("filename=")) {
+        const match = disposition.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) {
+          filename = match[1];
+        }
+      }
+
+      const targetPath = path.join(PLUGINS_DIR, filename);
+      const writer = fs.createWriteStream(targetPath);
+      response.data.pipe(writer);
+
+      writer.on("finish", () => {
+        logAudit("Plugin", `Marketten kuruldu (SpigotMC): ${filename}`);
+        io.emit("plugins-data", getPlugins());
+        res.json({ success: true });
+      });
+      writer.on("error", () =>
+        res.json({ success: false, error: "Yazma hatası." })
+      );
+    } catch (e) {
+      console.error("Spigot eklenti indirme hatası:", e.message);
+      res.json({ success: false, error: "İndirme başarısız veya eklenti harici bir bağlantı gerektiriyor." });
+    }
+  } else if (activeSource === "devbukkit") {
+    try {
+      const filesRes = await axios.get(
+        `https://api.curse.tools/v1/cf/mods/${id}/files`,
+        { headers: { "User-Agent": "MC-WebPanel/3.0" } }
+      );
+      if (!filesRes.data || !Array.isArray(filesRes.data.data) || filesRes.data.data.length === 0)
+        return res.json({ success: false, error: "Sürüm yok." });
+      
+      const latestFile = filesRes.data.data[0];
+      const targetPath = path.join(PLUGINS_DIR, latestFile.fileName);
+      const writer = fs.createWriteStream(targetPath);
+      
+      const response = await axios({
+        url: latestFile.downloadUrl,
+        method: "GET",
+        responseType: "stream",
+      });
+      response.data.pipe(writer);
+      
+      writer.on("finish", () => {
+        logAudit("Plugin", `Marketten kuruldu (DevBukkit): ${latestFile.fileName}`);
+        io.emit("plugins-data", getPlugins());
+        res.json({ success: true });
+      });
+      writer.on("error", () =>
+        res.json({ success: false, error: "Yazma hatası." })
+      );
+    } catch (e) {
+      console.error("DevBukkit eklenti indirme hatası:", e.message);
+      res.json({ success: false, error: "İndirme başarısız." });
+    }
+  } else {
+    res.json({ success: false, error: "Bilinmeyen kaynak." });
   }
 });
 
@@ -517,7 +841,7 @@ app.get("/api/files/list", (req, res) => {
       let size = 0;
       try {
         size = fs.statSync(itemPath).size;
-      } catch (e) {}
+      } catch (e) { }
       return {
         name: item.name,
         isDir: item.isDirectory(),
@@ -762,20 +1086,69 @@ app.get("/api/menu", (req, res) => {
 
 // 5.6-) YAZILIM YÖNETİCİSİ
 app.get("/api/software/list", async (req, res) => {
+  const type = req.query.type || "paper"; // paper, spigot, craftbukkit
   try {
     const response = await axios.get(
-      "https://api.papermc.io/v2/projects/paper"
+      "https://fill.papermc.io/v3/projects/paper",
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+      }
     );
-    const allVersions = response.data.versions;
-    const filteredList = allVersions.filter((v) => {
-      if (!/^\d+\.\d+(\.\d+)?$/.test(v)) return false;
-      const parts = v.split(".").map(Number);
-      if (parts[0] === 1 && parts[1] < 5) return false;
-      return true;
+    const allVersionsMap = response.data.versions;
+    const allVersionsList = [];
+    for (const group in allVersionsMap) {
+      allVersionsList.push(...allVersionsMap[group]);
+    }
+
+    const groups = {};
+    allVersionsList.forEach((v) => {
+      if (!/^\d+\.\d+(\.\d+)?(-[a-zA-Z0-9.]+)?$/.test(v)) return;
+      const parts = v.split('-')[0].split('.').map(Number);
+
+      // Spigot/CraftBukkit için sadece Minecraft 1.x.x sürümleri geçerlidir (Paper 26.x gibi sürümleri hariç tut).
+      if ((type === "spigot" || type === "craftbukkit") && parts[0] !== 1) return;
+
+      if (parts[0] === 1 && parts[1] < 8) return;
+
+      const baseVersion = v.split('-')[0];
+      const isStable = !v.includes('-');
+
+      if (!groups[baseVersion]) {
+        groups[baseVersion] = v;
+      } else {
+        const currentIsStable = !groups[baseVersion].includes('-');
+        if (isStable && !currentIsStable) {
+          groups[baseVersion] = v; // Stable olan unstable olanı ezer.
+        } else if (!isStable && !currentIsStable) {
+          groups[baseVersion] = v; // İkisi de unstable ise en günceli tutulur.
+        }
+      }
     });
-    const formattedList = filteredList
-      .reverse()
-      .map((v) => ({ version: v, type: "PaperMC (Stable)" }));
+
+    const sortedVersions = Object.values(groups).sort((a, b) => {
+      const cleanA = a.split('-')[0];
+      const cleanB = b.split('-')[0];
+      const partsA = cleanA.split('.').map(Number);
+      const partsB = cleanB.split('.').map(Number);
+
+      const len = Math.max(partsA.length, partsB.length);
+      for (let i = 0; i < len; i++) {
+        const numA = partsA[i] || 0;
+        const numB = partsB[i] || 0;
+        if (numA !== numB) {
+          return numB - numA; // En yeni en üstte
+        }
+      }
+      return b.localeCompare(a);
+    });
+
+    const formattedList = sortedVersions.map((v) => ({
+      version: v,
+      type: type === "paper" ? "Paper" : type === "spigot" ? "Spigot" : "CraftBukkit",
+      stable: !v.includes('-')
+    }));
     res.json(formattedList);
   } catch (error) {
     res.json([]);
@@ -784,6 +1157,7 @@ app.get("/api/software/list", async (req, res) => {
 
 app.post("/api/software/install", async (req, res) => {
   const version = req.body.version;
+  const type = req.body.type || "paper"; // paper, spigot, craftbukkit
   if (!version) return res.json({ success: false, error: "Sürüm seçilmedi." });
   if (mcProcess)
     return res.json({
@@ -791,12 +1165,27 @@ app.post("/api/software/install", async (req, res) => {
       error: "Sunucu açıkken kurulum yapılamaz!",
     });
   try {
-    const buildRes = await axios.get(
-      `https://api.papermc.io/v2/projects/paper/versions/${version}`
-    );
-    const builds = buildRes.data.builds;
-    const latestBuild = builds[builds.length - 1];
-    const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${version}/builds/${latestBuild}/downloads/paper-${version}-${latestBuild}.jar`;
+    let downloadUrl = "";
+    if (type === "paper") {
+      const buildRes = await axios.get(
+        `https://fill.papermc.io/v3/projects/paper/versions/${version}/builds`,
+        {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          }
+        }
+      );
+      const builds = buildRes.data;
+      const latestBuild = builds[builds.length - 1];
+      downloadUrl = latestBuild.downloads["server:default"].url;
+    } else if (type === "spigot") {
+      downloadUrl = `https://cdn.getbukkit.org/spigot/spigot-${version}.jar`;
+    } else if (type === "craftbukkit") {
+      downloadUrl = `https://cdn.getbukkit.org/craftbukkit/craftbukkit-${version}.jar`;
+    }
+
+    if (!downloadUrl) throw new Error("İndirme adresi bulunamadı.");
+
     if (!fs.existsSync(MC_SERVER_PATH)) {
       fs.mkdirSync(MC_SERVER_PATH, { recursive: true });
     }
@@ -819,11 +1208,12 @@ app.post("/api/software/install", async (req, res) => {
     });
     response.data.pipe(writer);
     writer.on("finish", () => {
-      logAudit("Yazılım", `PaperMC ${version} kuruldu.`);
-      savePanelConfig({ serverType: "PaperMC", serverVersion: version });
+      const typeName = type === "paper" ? "Paper" : type === "spigot" ? "Spigot" : "CraftBukkit";
+      logAudit("Yazılım", `${typeName} ${version} kuruldu.`);
+      savePanelConfig({ serverType: typeName, serverVersion: version });
       try {
         fs.writeFileSync(path.join(MC_SERVER_PATH, "eula.txt"), "eula=true\n");
-      } catch (e) {}
+      } catch (e) { }
       res.json({ success: true });
       setTimeout(() => {
         startServerFunc();
@@ -847,65 +1237,65 @@ app.get("/api/check-setup", (req, res) => {
 
 // 1. Yükleme ve Hash Hesaplama
 app.post("/api/upload-rp", uploadRP.single("pack"), (req, res) => {
-    if (!req.file) return res.json({ success: false, error: "Dosya yok." });
-    
-    try {
-        const filePath = path.join(RP_DIR, "server-resourcepack.zip");
-        const fileBuffer = fs.readFileSync(filePath);
-        
-        // SHA1 Hash Hesapla
-        const shasum = crypto.createHash('sha1');
-        shasum.update(fileBuffer);
-        const sha1 = shasum.digest('hex');
+  if (!req.file) return res.json({ success: false, error: "Dosya yok." });
 
-        // İndirme Linkini Oluştur (Sunucunun o anki host adresi üzerinden)
-        // Not: Eğer panel ve oyun sunucusu aynı IP'deyse bu çalışır.
-        // req.headers.host "localhost:3000" veya "192.168.1.5:3000" gibi döner.
-        const downloadUrl = `http://${req.headers.host}/resourcepacks/server-resourcepack.zip`;
+  try {
+    const filePath = path.join(RP_DIR, "server-resourcepack.zip");
+    const fileBuffer = fs.readFileSync(filePath);
 
-        // server.properties Güncelle
-        const props = getProperties();
-        props['resource-pack'] = downloadUrl;
-        props['resource-pack-sha1'] = sha1;
-        saveProperties(props);
+    // SHA1 Hash Hesapla
+    const shasum = crypto.createHash('sha1');
+    shasum.update(fileBuffer);
+    const sha1 = shasum.digest('hex');
 
-        logAudit("Ayarlar", "Yeni kaynak paketi yüklendi.");
-        res.json({ success: true, sha1: sha1 });
+    // İndirme Linkini Oluştur (Sunucunun o anki host adresi üzerinden)
+    // Not: Eğer panel ve oyun sunucusu aynı IP'deyse bu çalışır.
+    // req.headers.host "localhost:3000" veya "192.168.1.5:3000" gibi döner.
+    const downloadUrl = `http://${req.headers.host}/resourcepacks/server-resourcepack.zip`;
 
-    } catch (e) {
-        console.error(e);
-        res.json({ success: false, error: "İşlem sırasında hata oluştu." });
-    }
+    // server.properties Güncelle
+    const props = getProperties();
+    props['resource-pack'] = downloadUrl;
+    props['resource-pack-sha1'] = sha1;
+    saveProperties(props);
+
+    logAudit("Ayarlar", "Yeni kaynak paketi yüklendi.");
+    res.json({ success: true, sha1: sha1 });
+
+  } catch (e) {
+    console.error(e);
+    res.json({ success: false, error: "İşlem sırasında hata oluştu." });
+  }
 });
 
 // 2. Silme
 app.delete("/api/delete-rp", (req, res) => {
-    const filePath = path.join(RP_DIR, "server-resourcepack.zip");
-    if (fs.existsSync(filePath)) {
-        try {
-            fs.unlinkSync(filePath);
-            
-            // Properties'den kaldır
-            const props = getProperties();
-            props['resource-pack'] = "";
-            props['resource-pack-sha1'] = "";
-            saveProperties(props);
+  const filePath = path.join(RP_DIR, "server-resourcepack.zip");
+  if (fs.existsSync(filePath)) {
+    try {
+      fs.unlinkSync(filePath);
 
-            logAudit("Ayarlar", "Kaynak paketi silindi.");
-            res.json({ success: true });
-        } catch (e) {
-            res.json({ success: false, error: e.message });
-        }
-    } else {
-        res.json({ success: false, error: "Paket bulunamadı." });
+      // Properties'den kaldır
+      const props = getProperties();
+      props['resource-pack'] = "";
+      props['resource-pack-sha1'] = "";
+      saveProperties(props);
+
+      logAudit("Ayarlar", "Kaynak paketi silindi.");
+      res.json({ success: true });
+    } catch (e) {
+      res.json({ success: false, error: e.message });
     }
+  } else {
+    res.json({ success: false, error: "Paket bulunamadı." });
+  }
 });
 
 // 3. Durum Kontrolü (Sayfa açılınca dolu mu boş mu görelim)
 app.get("/api/check-rp", (req, res) => {
-    const filePath = path.join(RP_DIR, "server-resourcepack.zip");
-    const exists = fs.existsSync(filePath);
-    res.json({ exists: exists });
+  const filePath = path.join(RP_DIR, "server-resourcepack.zip");
+  const exists = fs.existsSync(filePath);
+  res.json({ exists: exists });
 });
 
 // 6-) ZAMANLAYICI
@@ -940,7 +1330,6 @@ function startServerFunc() {
     io.emit("log", `❌ HATA: ${JAR_NAME} dosyası bulunamadı!`);
     return;
   }
-  io.emit("log", `🚀 Başlatılıyor (${config.ramMax})...`);
   io.emit("status", "starting");
   const conf = getDiscordConfig();
   if (conf.optStatus) sendDiscord("🟢 Sunucu başlatılıyor...", "event");
@@ -948,11 +1337,32 @@ function startServerFunc() {
   // Panelden başlatıldığı için source="Panel", type="panel" (Varsayılanlar)
   logAudit("Sunucu", "Sunucu başlatıldı.");
 
+  // Hangi java kullanılacak?
+  let javaExecutable = "java";
+  if (config.javaPath && config.javaPath !== "java") {
+    if (fs.existsSync(config.javaPath)) {
+      javaExecutable = config.javaPath;
+    } else {
+      io.emit("log", `⚠️ UYARI: Seçilen Java yolu bulunamadı (${config.javaPath}). Sistem varsayılanı kullanılıyor.`);
+    }
+  }
+
+  let javaLogName = "Sistem Varsayılanı";
+  if (javaExecutable !== "java") {
+    try {
+      javaLogName = path.basename(path.dirname(path.dirname(javaExecutable)));
+    } catch (e) {
+      javaLogName = javaExecutable;
+    }
+  }
+
+  io.emit("log", `🚀 Başlatılıyor (${config.ramMax}) | Java: ${javaLogName}...`);
+
   onlinePlayers = [];
   correctPid = null;
   try {
     mcProcess = spawn(
-      "java",
+      javaExecutable,
       [
         `-Xms${config.ramMin}`,
         `-Xmx${config.ramMax}`,
@@ -962,6 +1372,17 @@ function startServerFunc() {
       ],
       { cwd: MC_SERVER_PATH }
     );
+
+    if (mcProcess.stdin) {
+      mcProcess.stdin.on("error", (err) => {
+        // Sunucu kapanırken veya kapandığında EPIPE hatası oluşabilir, bunu yakalayıp çökmeyi önlüyoruz.
+        console.warn("mcProcess.stdin hatası (EPIPE yok sayıldı):", err.message);
+      });
+    }
+
+    mcProcess.on("error", (err) => {
+      io.emit("log", `❌ HATA: Sunucu süreci hatası: ${err.message}`);
+    });
 
     // --- KONSOL ÇIKTILARINI DİNLEME ---
     mcProcess.stdout.on("data", (data) => {
@@ -1016,8 +1437,32 @@ function startServerFunc() {
       if (dConf.optAdv && line.includes("has made the advancement")) {
         sendDiscord(`🏆 ${line.split("]: ")[1] || line}`, "event");
       }
-      if (line.includes("Done") || line.includes("For help"))
+      // TPS Logunu Yakalama
+      if (line.includes("TPS from last")) {
+        try {
+          const tpsRegex = /TPS from last 1m, 5m, 15m:\s*\*?([\d\.]+)/;
+          const match = line.match(tpsRegex);
+          if (match && match[1]) {
+            const parsedTps = parseFloat(match[1]);
+            if (!isNaN(parsedTps)) currentTps = parsedTps;
+          }
+        } catch (e) {}
+      }
+
+      if (line.includes("Done") || line.includes("For help")) {
         io.emit("status", "online");
+        serverStartTime = Date.now();
+        // TPS Sorgulama döngüsünü başlat
+        if (!tpsInterval) {
+          tpsInterval = setInterval(() => {
+            if (mcProcess && mcProcess.stdin) {
+              try {
+                mcProcess.stdin.write("tps\n");
+              } catch (e) {}
+            }
+          }, 15000);
+        }
+      }
     });
 
     mcProcess.stderr.on("data", (data) =>
@@ -1025,6 +1470,16 @@ function startServerFunc() {
     );
 
     mcProcess.on("close", (code) => {
+      serverStartTime = null;
+      currentTps = 20.0;
+      serverStatsHistory = [];
+      if (tpsInterval) {
+        clearInterval(tpsInterval);
+        tpsInterval = null;
+      }
+      // Sunucu kapandıktan hemen sonra diske yazılan hatalı UUID'leri temizle
+      cleanOpsJson();
+
       io.emit("log", `🛑 Sunucu Kapandı. Çıkış Kodu: ${code}`);
       io.emit("status", "offline");
 
@@ -1057,7 +1512,7 @@ function startServerFunc() {
       if (correctPid)
         try {
           pidusage.unmonitor(correctPid);
-        } catch (e) {}
+        } catch (e) { }
       mcProcess = null;
       onlinePlayers = [];
     });
@@ -1071,6 +1526,69 @@ let correctPid = null;
 let onlinePlayers = [];
 loadSchedules();
 
+// --- ASENKRON DİSK VE DÜNYA BOYUTU SORGULARI ---
+function updateDiskAndWorldStats() {
+  const webpanelPath = path.resolve(__dirname);
+  const diskCmd = `powershell -command "Get-ChildItem -Path '${webpanelPath}','${MC_SERVER_PATH}' -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum | ForEach-Object { $_.Sum }"`;
+  
+  exec(diskCmd, (err, stdout) => {
+    if (!err && stdout) {
+      const sumBytes = parseInt(stdout.trim());
+      if (!isNaN(sumBytes)) {
+        const sizeGB = (sumBytes / (1024 * 1024 * 1024)).toFixed(2); // GB
+        diskDataCache.totalDisk = sizeGB;
+        diskDataCache.usedDisk = sizeGB;
+        diskDataCache.diskPercent = 100;
+      }
+    }
+  });
+
+  try {
+    const props = getProperties();
+    const levelName = props['level-name'] || 'world';
+    const worldPath = path.join(MC_SERVER_PATH, levelName);
+    const netherPath = path.join(MC_SERVER_PATH, `${levelName}_nether`);
+    const endPath = path.join(MC_SERVER_PATH, `${levelName}_the_end`);
+
+    let pathsToMeasure = [];
+    if (fs.existsSync(worldPath)) pathsToMeasure.push(`'${worldPath}'`);
+    if (fs.existsSync(netherPath)) pathsToMeasure.push(`'${netherPath}'`);
+    if (fs.existsSync(endPath)) pathsToMeasure.push(`'${endPath}'`);
+
+    if (pathsToMeasure.length > 0) {
+      const cmd = `powershell -command "Get-ChildItem -Path ${pathsToMeasure.join(',')} -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum | ForEach-Object { $_.Sum }"`;
+      exec(cmd, (err, stdout) => {
+        if (!err && stdout) {
+          const sumBytes = parseInt(stdout.trim());
+          if (!isNaN(sumBytes)) {
+            diskDataCache.worldSize = (sumBytes / (1024 * 1024)).toFixed(1); // MB
+          }
+        }
+      });
+    }
+  } catch (e) {
+    console.error("Dünya boyutu hesaplama hatası:", e);
+  }
+}
+
+// Her 30 saniyede bir çalıştır
+setInterval(updateDiskAndWorldStats, 30000);
+// İlk çalıştırma
+setTimeout(updateDiskAndWorldStats, 5000);
+
+function pushStatsToHistory(stats) {
+  if (!mcProcess) return;
+  serverStatsHistory.push({
+    cpu: stats.cpu,
+    ram: stats.ram,
+    max: stats.max,
+    time: new Date().toLocaleTimeString("tr-TR")
+  });
+  if (serverStatsHistory.length > 150) {
+    serverStatsHistory.shift();
+  }
+}
+
 // 8-) İSTATİSTİK DÖNGÜSÜ
 setInterval(() => {
   const cOps = getOps();
@@ -1081,7 +1599,7 @@ setInterval(() => {
   const maxRamMB = conf.ramMax ? parseInt(conf.ramMax) * 1024 : 4096;
 
   // 'max' parametresini ekledik
-  let statsData = { cpu: 0, ram: 0, max: maxRamMB, players: onlinePlayers, ops: cOps };
+  let statsData = { cpu: 0, ram: 0, max: maxRamMB, players: onlinePlayers, ops: cOps, uptime: serverStartTime ? Math.floor((Date.now() - serverStartTime) / 1000) : 0, tps: currentTps, disk: diskDataCache };
 
   if (!mcProcess) {
     correctPid = null;
@@ -1106,6 +1624,7 @@ setInterval(() => {
               if (cpu > 100) cpu = 100;
               statsData.cpu = cpu;
               statsData.ram = mb;
+              pushStatsToHistory(statsData);
               // statsData içinde artık 'max' verisi de var, frontend bunu kullanacak
               io.emit("server-stats", statsData);
             });
@@ -1113,6 +1632,7 @@ setInterval(() => {
           }
         }
       } else {
+        pushStatsToHistory(statsData);
         io.emit("server-stats", statsData);
       }
     });
@@ -1120,6 +1640,7 @@ setInterval(() => {
     pidusage(correctPid, (e, s) => {
       if (e) {
         correctPid = null;
+        pushStatsToHistory(statsData);
         io.emit("server-stats", statsData);
         return;
       }
@@ -1128,6 +1649,7 @@ setInterval(() => {
         if (cpu > 100) cpu = 100;
         statsData.cpu = cpu;
         statsData.ram = (s.memory / 1048576).toFixed(0);
+        pushStatsToHistory(statsData);
         // statsData içinde artık 'max' verisi de var, frontend bunu kullanacak
         io.emit("server-stats", statsData);
       }
@@ -1142,8 +1664,22 @@ io.on("connection", (socket) => {
     socket.emit("sistem-bilgileri", info);
   });
 
+  socket.on("get-stats-history", () => {
+    socket.emit("stats-history-data", serverStatsHistory);
+  });
+
   socket.emit("status", mcProcess ? "online" : "offline");
   socket.emit("log-history", getLatestLogs(200));
+  socket.on("get-java-list", () => {
+    socket.emit("java-list-data", cachedJavaList);
+  });
+  socket.on("refresh-java-list", async () => {
+    const list = await scanJavaVersions();
+    cachedJavaList = list;
+    io.emit("java-list-data", cachedJavaList);
+    socket.emit("log", "🔄 Java sürümleri başarıyla yenilendi.");
+    socket.emit("refresh-java-success"); // Arayüze bittiğini haber vermek için
+  });
   socket.on("get-settings", () => {
     const c = getPanelConfig(); // config.json'u oku
     const p = getProperties();
@@ -1164,6 +1700,28 @@ io.on("connection", (socket) => {
     const oldProps = getProperties();
     let changes = []; // Değişiklikleri burada toplayacağız
 
+    // [YENİ] Java Sürümü Değişimi
+    if (d.javaPath !== undefined) {
+      const oldJava = oldConfig.javaPath || "java";
+      const newJava = d.javaPath;
+      if (oldJava !== newJava) {
+        let oldDisplay = "Sistem Varsayılanı";
+        let newDisplay = "Sistem Varsayılanı";
+        if (oldJava !== "java") {
+          try {
+            oldDisplay = path.basename(path.dirname(path.dirname(oldJava)));
+          } catch (e) { oldDisplay = oldJava; }
+        }
+        if (newJava !== "java") {
+          try {
+            newDisplay = path.basename(path.dirname(path.dirname(newJava)));
+          } catch (e) { newDisplay = newJava; }
+        }
+        changes.push(`<b>Java Sürümü:</b> ${oldDisplay} ➝ ${newDisplay}`);
+        savePanelConfig({ javaPath: d.javaPath });
+      }
+    }
+
     // 2. RAM Karşılaştırması
     if (d.ram) {
       const oldRam = oldConfig.ramMax ? oldConfig.ramMax.replace("G", "") : "?";
@@ -1178,12 +1736,12 @@ io.on("connection", (socket) => {
       }
     }
 
+
     // [YENİ] Config (Auto Restart) Değişimi
     if (d.config) {
       if (oldConfig.autoRestart !== d.config.autoRestart) {
         changes.push(
-          `<b>Oto-Restart:</b> ${oldConfig.autoRestart ? "Aktif" : "Pasif"} ➝ ${
-            d.config.autoRestart ? "Aktif" : "Pasif"
+          `<b>Oto-Restart:</b> ${oldConfig.autoRestart ? "Aktif" : "Pasif"} ➝ ${d.config.autoRestart ? "Aktif" : "Pasif"
           }`
         );
         savePanelConfig({ autoRestart: d.config.autoRestart });
@@ -1265,6 +1823,36 @@ io.on("connection", (socket) => {
       socket.emit("audit-data", JSON.parse(fs.readFileSync(AUDIT_FILE)));
     else socket.emit("audit-data", []);
   });
+  socket.on("clear-audit", (data) => {
+    try {
+      const type = data ? data.type : null;
+      let audits = [];
+      if (fs.existsSync(AUDIT_FILE)) {
+        audits = JSON.parse(fs.readFileSync(AUDIT_FILE));
+      }
+
+      let updatedAudits = [];
+      let label = "Tüm";
+      if (type === "panel") {
+        // Sadece panel dışındaki logları (yani game loglarını) tut
+        updatedAudits = audits.filter(log => log.type !== "panel");
+        label = "Panel İşlemleri";
+      } else if (type === "game") {
+        // Sadece game dışındaki logları (yani panel loglarını) tut
+        updatedAudits = audits.filter(log => log.type !== "game");
+        label = "Oyun Komutları";
+      } else {
+        // Hiçbiri değilse tamamını temizle
+        updatedAudits = [];
+      }
+
+      fs.writeFileSync(AUDIT_FILE, JSON.stringify(updatedAudits, null, 2));
+      io.emit("audit-data", updatedAudits);
+      socket.emit("log", `🗑️ ${label} denetim kayıtları temizlendi.`);
+    } catch (e) {
+      socket.emit("log", "Hata: Denetim kayıtları temizlenemedi. " + e.message);
+    }
+  });
   socket.on("get-discord", () => {
     socket.emit("discord-data", getDiscordConfig());
   });
@@ -1297,20 +1885,53 @@ io.on("connection", (socket) => {
     if (data.action === "delete") {
       if (!fs.existsSync(targetPath)) return;
       try {
+        // Yedek istenmişse silmeden önce yedekle
+        if (data.backup === true) {
+          const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+          const backupName = `backup-${data.name}-${timestamp}.zip`;
+          if (!fs.existsSync(BACKUP_DIR)) {
+            fs.mkdirSync(BACKUP_DIR, { recursive: true });
+          }
+          const backupPath = path.join(BACKUP_DIR, backupName);
+          const zip = new AdmZip();
+          zip.addLocalFolder(targetPath, data.name);
+          zip.writeZip(backupPath);
+          logAudit("Yedek", `${data.name} silinmeden önce yedeklendi.`);
+          socket.emit("log", `💾 Silinmeden önce yedek alındı: ${backupName}`);
+        }
+
+        // Eğer aktif dünya siliniyorsa level-name'i "world" yapalım
+        let currentProps = {};
+        try {
+          currentProps = getProperties();
+        } catch (e) { }
+
+        if (currentProps["level-name"] === data.name) {
+          currentProps["level-name"] = "world";
+          try {
+            saveProperties(currentProps);
+            logAudit("Ayarlar", `Aktif dünya silindiği için level-name varsayılan 'world' yapıldı.`);
+          } catch (e) {
+            console.error("Properties kaydedilemedi:", e.message);
+          }
+        }
+
         fs.rmSync(targetPath, { recursive: true, force: true });
         logAudit("Dünya", `${data.name} silindi.`);
         socket.emit("log", `🗑️ ${data.name} silindi.`);
+
         const worlds = [];
         if (fs.existsSync(MC_SERVER_PATH)) {
-          const currentProps = getProperties();
+          const updatedProps = getProperties();
+          const activeLevel = updatedProps["level-name"] || "world";
           fs.readdirSync(MC_SERVER_PATH).forEach((file) => {
             if (
               fs.lstatSync(path.join(MC_SERVER_PATH, file)).isDirectory() &&
-              (file.startsWith("world") || file === currentProps["level-name"])
+              (file.startsWith("world") || file === activeLevel)
             ) {
               worlds.push({
                 name: file,
-                isActive: file === currentProps["level-name"],
+                isActive: file === activeLevel,
               });
             }
           });
@@ -1343,7 +1964,50 @@ io.on("connection", (socket) => {
       }
     }
   });
+
+  // Yeni Dünya Oluştur
+  socket.on("create-world", (data) => {
+    if (mcProcess)
+      return socket.emit("log", "⚠️ Sunucu açıkken dünya oluşturulamaz! Sunucuyu durdurun.");
+
+    const name = (data.name || "").trim();
+
+    // İsim doğrulama
+    if (!name || !/^[a-zA-Z0-9_\-]+$/.test(name)) {
+      return socket.emit("world-create-result", { success: false, error: "Geçersiz dünya adı." });
+    }
+
+    const newWorldPath = path.join(MC_SERVER_PATH, name);
+
+    if (fs.existsSync(newWorldPath)) {
+      return socket.emit("world-create-result", { success: false, error: `"${name}" zaten mevcut.` });
+    }
+
+    try {
+      fs.mkdirSync(newWorldPath, { recursive: true });
+      logAudit("Dünya", `Yeni dünya oluşturuldu: ${name}`);
+      socket.emit("log", `🌱 Yeni dünya oluşturuldu: ${name}`);
+
+      // Güncel dünya listesini gönder
+      const props = getProperties();
+      const activeLevel = props["level-name"] || "world";
+      const worlds = [];
+      fs.readdirSync(MC_SERVER_PATH).forEach((file) => {
+        if (fs.lstatSync(path.join(MC_SERVER_PATH, file)).isDirectory()) {
+          if (file.startsWith("world") || file === activeLevel || file === name) {
+            worlds.push({ name: file, isActive: file === activeLevel });
+          }
+        }
+      });
+      socket.emit("world-create-result", { success: true, name });
+      socket.emit("worlds-data", worlds);
+    } catch (e) {
+      socket.emit("world-create-result", { success: false, error: e.message });
+    }
+  });
+
   socket.on("get-worlds", () => {
+
     const worlds = [];
     if (fs.existsSync(MC_SERVER_PATH)) {
       const props = getProperties();
@@ -1385,7 +2049,38 @@ io.on("connection", (socket) => {
   socket.on("stop-server", () => {
     if (mcProcess) {
       isManualStop = true;
-      mcProcess.stdin.write("stop\n");
+      io.emit("log", "⏳ Sunucu verileri kaydediliyor (save-all)...");
+      try {
+        mcProcess.stdin.write("say [Panel] Dunya kaydediliyor, sunucu kapatilacak...\n");
+        mcProcess.stdin.write("save-all\n");
+      } catch (e) {
+        io.emit("log", `⚠️ save-all komutu gönderilemedi: ${e.message}`);
+      }
+
+      // 2 saniye save işleminin tamamlanmasını bekle, sonra stop komutunu gönder
+      setTimeout(() => {
+        if (mcProcess) {
+          io.emit("log", "⏳ Sunucu kapatılıyor (stop komutu gönderildi)...");
+          try {
+            mcProcess.stdin.write("stop\n");
+          } catch (e) {
+            io.emit("log", `⚠️ stop komutu gönderilemedi: ${e.message}`);
+          }
+        }
+      }, 2000);
+
+      // 12 saniyelik timeout (Kapanmazsa zorla kapat)
+      setTimeout(() => {
+        if (mcProcess) {
+          io.emit("log", "⚠️ Sunucu normal şekilde kapanmadı. Zorla sonlandırılıyor...");
+          try {
+            mcProcess.kill("SIGKILL");
+          } catch (e) {
+            const { exec } = require("child_process");
+            exec(`taskkill /pid ${mcProcess.pid} /f /t`);
+          }
+        }
+      }, 12000);
     }
   });
   socket.on("admin-action", (d) => {
@@ -1414,12 +2109,71 @@ io.on("connection", (socket) => {
         "Panel Admin",
         "panel"
       );
+
+      // OP / DEOP için ops.json dosyasını doğrudan güncelle (Offline Mode UUID uyumsuzluğunu düzeltir)
+      if (d.action === "op" || d.action === "deop") {
+        try {
+          const opsFilePath = path.join(MC_SERVER_PATH, "ops.json");
+          const userCachePath = path.join(MC_SERVER_PATH, "usercache.json");
+
+          let opsList = [];
+          if (fs.existsSync(opsFilePath)) {
+            opsList = JSON.parse(fs.readFileSync(opsFilePath, "utf8"));
+          }
+
+          if (d.action === "deop") {
+            // İsme göre listeden çıkar (büyük/küçük harf duyarsız)
+            opsList = opsList.filter(op => op.name.toLowerCase() !== d.target.toLowerCase());
+          } else if (d.action === "op") {
+            // usercache'ten gerçek UUID bulmaya çalış
+            let realUuid = "";
+            if (fs.existsSync(userCachePath)) {
+              try {
+                const cache = JSON.parse(fs.readFileSync(userCachePath, "utf8"));
+                const cachedUser = cache.find(u => u.name.toLowerCase() === d.target.toLowerCase());
+                if (cachedUser) {
+                  realUuid = cachedUser.uuid;
+                }
+              } catch (e) { }
+            }
+
+            if (realUuid) {
+              // Zaten listede yoksa ekle
+              const exists = opsList.some(op => op.name.toLowerCase() === d.target.toLowerCase());
+              if (!exists) {
+                opsList.push({
+                  uuid: realUuid,
+                  name: d.target,
+                  level: 4,
+                  bypassesPlayerLimit: false
+                });
+              }
+            }
+          }
+
+          fs.writeFileSync(opsFilePath, JSON.stringify(opsList, null, 2), "utf8");
+          // Değişikliği anında istemcilere gönder
+          io.emit("ops-data", opsList.map(op => op.name));
+        } catch (e) {
+          console.error("ops.json güncelleme hatası:", e.message);
+        }
+      }
+
       const conf = getDiscordConfig();
       if (conf.optAdmin) sendDiscord(`🛡️ **Admin:** ${c}`, "admin");
       setTimeout(() => {
         if (d.action === "ban") io.emit("banned-data", getBannedPlayers());
-        if (d.action === "op" || d.action === "deop")
+        if (d.action === "op" || d.action === "deop") {
+          cleanOpsJson();
           io.emit("ops-data", getOps());
+        }
+      }, 500);
+
+      setTimeout(() => {
+        if (d.action === "op" || d.action === "deop") {
+          cleanOpsJson();
+          io.emit("ops-data", getOps());
+        }
       }, 2000);
     }
   });
@@ -1443,169 +2197,348 @@ io.on("connection", (socket) => {
     }, 1000);
   });
 
-  
-  // [YENİ] TÜM OYUNCULARI GETİR (usercache.json + Online Durumu)
+
   socket.on("get-all-players", async () => {
-      const userCachePath = path.join(MC_SERVER_PATH, "usercache.json");
-      let allPlayers = [];
+    let worldName = "world";
+    try {
+      const props = getProperties();
+      worldName = props["level-name"] || "world";
+    } catch (e) { }
 
-      // 1. usercache.json oku (Tarihçesi olan herkes buradadır)
-      if (fs.existsSync(userCachePath)) {
-          try {
-              const cache = JSON.parse(fs.readFileSync(userCachePath));
-              allPlayers = cache.map(p => ({
-                  name: p.name,
-                  uuid: p.uuid,
-                  online: onlinePlayers.includes(p.name) // Global online listesinden kontrol
-              }));
-          } catch (e) { console.error("Usercache okuma hatası", e); }
+    // Olası playerdata yolları
+    const pdataPaths = [
+      path.join(MC_SERVER_PATH, worldName, "playerdata"),
+      path.join(MC_SERVER_PATH, "world", "playerdata"),
+      path.join(MC_SERVER_PATH, worldName, "players", "data"),
+      path.join(MC_SERVER_PATH, "world", "players", "data"),
+    ];
+
+    // Gerçekten var olan UUID'leri bul (dosya adlarından)
+    const existingUuids = new Set();
+    pdataPaths.forEach(pDir => {
+      if (fs.existsSync(pDir)) {
+        try {
+          fs.readdirSync(pDir).forEach(file => {
+            if (file.endsWith(".dat")) {
+              const uuid = file.replace(".dat", "");
+              existingUuids.add(uuid);
+            }
+          });
+        } catch (e) {
+          console.error("Playerdata tarama hatası:", pDir, e.message);
+        }
       }
+    });
 
-      // Eğer cache yoksa en azından online oyuncuları ekle
-      onlinePlayers.forEach(pName => {
-          if (!allPlayers.find(p => p.name === pName)) {
-              allPlayers.push({ name: pName, uuid: "unknown", online: true });
-          }
+    const userCachePath = path.join(MC_SERVER_PATH, "usercache.json");
+    let allPlayers = [];
+    let cacheMap = {};
+
+    // 1. usercache.json oku
+    if (fs.existsSync(userCachePath)) {
+      try {
+        const cache = JSON.parse(fs.readFileSync(userCachePath));
+        cache.forEach(p => {
+          cacheMap[p.uuid] = p.name;
+        });
+      } catch (e) { console.error("Usercache okuma hatası", e); }
+    }
+
+    // 2. Sadece playerdata dosyası var olan UUID'leri listeye ekle
+    existingUuids.forEach(uuid => {
+      const name = cacheMap[uuid] || "Bilinmiyor";
+      // İsmi bilinmeyen oyuncuları "Bilinmiyor (UUID)" şeklinde gösterebiliriz veya sadece Bilinmiyor yapabiliriz
+      allPlayers.push({
+        name: name !== "Bilinmiyor" ? name : `Bilinmiyor (${uuid.slice(0, 8)})`,
+        uuid: uuid,
+        online: onlinePlayers.includes(name)
       });
+    });
 
-      socket.emit("all-players-data", allPlayers);
+    // 3. O an çevrimiçi olan ama henüz playerdata dosyası oluşmamış/diske yazılmamış olabilecek oyuncuları ekle
+    onlinePlayers.forEach(pName => {
+      const found = allPlayers.find(p => p.name === pName);
+      if (!found) {
+        // usercache'ten UUID bulmaya çalış
+        let uuid = "unknown";
+        for (const [u, name] of Object.entries(cacheMap)) {
+          if (name === pName) {
+            uuid = u;
+            break;
+          }
+        }
+        allPlayers.push({ name: pName, uuid: uuid, online: true });
+      }
+    });
+
+    socket.emit("all-players-data", allPlayers);
   });
 
   // [YENİ] OYUNCU ENVANTERİ GETİR (NBT Parsing)
   // [DÜZELTİLDİ] OYUNCU ENVANTERİ GETİR (NBT Parsing)
   socket.on("get-player-inventory", async ({ uuid }) => {
-      const playerDataPath = path.join(MC_SERVER_PATH, "world", "playerdata", `${uuid}.dat`);
-      
-      let result = { inventory: [], ender: [] };
+    // Aktif dünya klasörünü bul, bulamazsan "world" kullan
+    let worldName = "world";
+    try {
+      const props = getProperties();
+      worldName = props["level-name"] || "world";
+    } catch (e) { /* getProperties hata verirse world kullan */ }
 
-      if (fs.existsSync(playerDataPath)) {
-          try {
-              const buffer = fs.readFileSync(playerDataPath);
-              
-              // promisify KALDIRILDI. Direkt parse fonksiyonunu kullanıyoruz.
-              // prismarine-nbt'nin parse fonksiyonu (buffer, callback) şeklinde çalışır veya promise döner mi versiyona göre değişir.
-              // En güvenli yöntem callback kullanmaktır ama await ile de deneyelim.
-              
-              // VEYA: Eski usül nbt.parse(buffer, (err, data) => ...) kullanalım, en garantisi budur.
-              const parsedData = await new Promise((resolve, reject) => {
-                  nbt.parse(buffer, (err, data) => {
-                      if (err) reject(err);
-                      else resolve(data);
-                  });
-              });
-              
-              // Veriyi Güvenli Şekilde Oku (Optional Chaining ?. kullanarak)
-              const inventoryList = parsedData.value?.Inventory?.value?.value;
-              const enderList = parsedData.value?.EnderItems?.value?.value;
+    // Olası playerdata konumlarını sırayla dene
+    const candidatePaths = [
+      path.join(MC_SERVER_PATH, worldName, "playerdata", `${uuid}.dat`),
+      path.join(MC_SERVER_PATH, "world", "playerdata", `${uuid}.dat`),
+      path.join(MC_SERVER_PATH, worldName, "players", "data", `${uuid}.dat`),
+      path.join(MC_SERVER_PATH, "world", "players", "data", `${uuid}.dat`),
+    ];
+    const playerDataPath = candidatePaths.find(p => fs.existsSync(p)) || null;
 
-              if (Array.isArray(inventoryList)) {
-                  result.inventory = inventoryList.map(item => ({
-                      id: item.id?.value || "minecraft:air",
-                      Count: item.Count?.value || 1,
-                      Slot: item.Slot?.value || 0
-                  }));
+    let result = { inventory: [], ender: [], found: false };
+
+    if (playerDataPath) {
+      result.found = true;
+      try {
+        const buffer = fs.readFileSync(playerDataPath);
+
+        const parsedData = await new Promise((resolve, reject) => {
+          nbt.parse(buffer, (err, data) => {
+            if (err) reject(err);
+            else resolve(data);
+          });
+        });
+
+        // prismarine-nbt'nin simplify() metodu ile tüm NBT'yi düz JS objesine indirge
+        const simplified = nbt.simplify(parsedData);
+
+
+
+        const inventoryList = simplified.Inventory;
+        const enderList = simplified.EnderItems;
+        const equipment = simplified.equipment; // 1.20.5+ Zırh/Ekipman etiketi
+
+        if (Array.isArray(inventoryList)) {
+          result.inventory = inventoryList.map(item => ({
+            id: item.id || "minecraft:air",
+            Count: item.count !== undefined ? item.count : (item.Count || 1),
+            Slot: item.Slot || 0
+          }));
+        }
+
+        // Yeni sürümlerde zırhlar equipment altında tutulur, eski slot ID'leriyle normalize edip ekleyelim
+        if (equipment) {
+          const equipSlots = {
+            head: 103,
+            chest: 102,
+            legs: 101,
+            feet: 100,
+            offhand: -106
+          };
+
+          for (const [key, slot] of Object.entries(equipSlots)) {
+            const eqItem = equipment[key];
+            if (eqItem && eqItem.id && eqItem.id !== "minecraft:air") {
+              const exists = result.inventory.some(x => x.Slot == slot);
+              if (!exists) {
+                result.inventory.push({
+                  id: eqItem.id,
+                  Count: eqItem.count !== undefined ? eqItem.count : (eqItem.Count || 1),
+                  Slot: slot
+                });
               }
-
-              if (Array.isArray(enderList)) {
-                  result.ender = enderList.map(item => ({
-                      id: item.id?.value || "minecraft:air",
-                      Count: item.Count?.value || 1,
-                      Slot: item.Slot?.value || 0
-                  }));
-              }
-
-          } catch (e) {
-              console.error("NBT Parse Hatası:", e.message);
-              // Hata olsa bile boş veri gönder ki loading ekranında kalmasın
+            }
           }
-      } else {
-          console.log("Oyuncu verisi bulunamadı:", uuid);
+        }
+
+        if (Array.isArray(enderList)) {
+          result.ender = enderList.map(item => ({
+            id: item.id || "minecraft:air",
+            Count: item.count !== undefined ? item.count : (item.Count || 1),
+            Slot: item.Slot || 0
+          }));
+        }
+
+      } catch (e) {
+        console.error("NBT Parse Hatası:", uuid, e.message);
+        result.error = "NBT okunamadı: " + e.message;
       }
-      
-      socket.emit("player-inventory-data", result);
+    } else {
+      result.error = "Oyuncu verisi bulunamadı. Oyuncu hiç giriş yapmamış olabilir.";
+    }
+
+    socket.emit("player-inventory-data", result);
   });
-// [GÜNCELLENDİ] OYUNCU İSTATİSTİKLERİNİ GETİR (DÜZELTİLMİŞ)
+
+  // [GÜNCELLENDİ] OYUNCU İSTATİSTİKLERİNİ GETİR (DÜZELTİLMİŞ)
   socket.on("get-player-stats", () => {
-      // 1. Doğru Dünya Klasörünü Bul
-      const props = getProperties(); 
-      const worldName = props["level-name"] || "world"; 
-      
-      const statsDir = path.join(MC_SERVER_PATH, worldName, "stats");
-      const userCachePath = path.join(MC_SERVER_PATH, "usercache.json");
-      
-      let stats = [];
-      let uuidToName = {};
+    // 1. Doğru Dünya Klasörünü Bul
+    let worldName = "world";
+    try {
+      const props = getProperties();
+      worldName = props["level-name"] || "world";
+    } catch (e) { }
 
-      // 2. İsimleri Önbelleğe Al
-      if (fs.existsSync(userCachePath)) {
-          try {
-              const cache = JSON.parse(fs.readFileSync(userCachePath));
-              cache.forEach(u => uuidToName[u.uuid] = u.name);
-          } catch(e) {}
-      }
+    // Olası stats dizin konumlarını sırayla dene
+    const statsCandidates = [
+      path.join(MC_SERVER_PATH, worldName, "stats"),  // aktif dünya (1.13+)
+      path.join(MC_SERVER_PATH, "world", "stats"),    // fallback: varsayılan "world"
+      path.join(MC_SERVER_PATH, worldName, "players", "stats"), // Spigot/Paper oyuncu stats yolu
+      path.join(MC_SERVER_PATH, "world", "players", "stats"),   // Fallback oyuncu stats yolu
+      path.join(MC_SERVER_PATH, "stats"),             // bazı eski/özel kurulumlar
+    ];
+    const statsDir = statsCandidates.find(d => fs.existsSync(d)) || null;
 
-      // 3. İstatistik Dosyalarını Oku
-      if (fs.existsSync(statsDir)) {
-          try {
-              const files = fs.readdirSync(statsDir);
-              files.forEach(file => {
-                  if (file.endsWith(".json")) {
-                      const uuid = file.replace(".json", "");
-                      const name = uuidToName[uuid] || "Bilinmiyor";
-                      
-                      try {
-                          const content = JSON.parse(fs.readFileSync(path.join(statsDir, file)));
-                          
-                          let playTimeTicks = 0;
-                          let deaths = 0;
-                          let mobKills = 0;
-                          let playerKills = 0;
+    const userCachePath = path.join(MC_SERVER_PATH, "usercache.json");
 
-                          // --- YENİ SÜRÜM KONTROLÜ (1.13+) ---
-                          if (content.stats && content.stats["minecraft:custom"]) {
-                              const custom = content.stats["minecraft:custom"];
-                              
-                              // ÖNEMLİ: Hem 'play_time' hem 'play_one_minute' kontrol ediyoruz.
-                              // Bazı sürümlerde play_time, bazılarında play_one_minute yazar.
-                              playTimeTicks = custom["minecraft:play_time"] || custom["minecraft:play_one_minute"] || 0;
-                              
-                              deaths = custom["minecraft:deaths"] || 0;
-                              mobKills = custom["minecraft:mob_kills"] || 0;
-                              playerKills = custom["minecraft:player_kills"] || 0;
-                          } 
-                          // --- ESKİ SÜRÜM KONTROLÜ (1.12 ve altı) ---
-                          else {
-                              playTimeTicks = content["stat.playOneMinute"] || 0;
-                              deaths = content["stat.deaths"] || 0;
-                              mobKills = content["stat.mobKills"] || 0;
-                              playerKills = content["stat.playerKills"] || 0;
-                          }
+    let stats = [];
+    let uuidToName = {};
 
-                          // Ticks -> Saat Çevrimi (1 saniye = 20 tick)
-                          // .toFixed(2) ile 0.05 gibi küçük süreleri de gösteriyoruz.
-                          const playTimeHours = (playTimeTicks / 20 / 3600).toFixed(2);
+    // 2. İsimleri Önbelleğe Al
+    if (fs.existsSync(userCachePath)) {
+      try {
+        const cache = JSON.parse(fs.readFileSync(userCachePath));
+        cache.forEach(u => uuidToName[u.uuid] = u.name);
+      } catch (e) { }
+    }
 
-                          stats.push({
-                              name: name,
-                              uuid: uuid,
-                              playTime: parseFloat(playTimeHours),
-                              deaths: deaths,
-                              mobKills: mobKills,
-                              playerKills: playerKills
-                          });
+    // 3. İstatistik Dosyalarını Oku
+    if (statsDir) {
+      try {
+        const files = fs.readdirSync(statsDir);
+        files.forEach(file => {
+          if (file.endsWith(".json")) {
+            const uuid = file.replace(".json", "");
+            const name = uuidToName[uuid] || "Bilinmiyor";
 
-                      } catch(err) { console.log("Stat dosyası okunamadı:", file); }
-                  }
+            try {
+              const content = JSON.parse(fs.readFileSync(path.join(statsDir, file)));
+
+              let playTimeTicks = 0;
+              let deaths = 0;
+              let mobKills = 0;
+              let playerKills = 0;
+
+              // --- YENİ SÜRÜM (1.13+): content.stats["minecraft:custom"] ---
+              if (content.stats && content.stats["minecraft:custom"]) {
+                const custom = content.stats["minecraft:custom"];
+                // play_time için tüm bilinen alan adları (sürüme göre değişir)
+                playTimeTicks =
+                  custom["minecraft:play_time"] ||
+                  custom["minecraft:play_one_minute"] ||
+                  custom["minecraft:total_world_time"] || 0;
+
+                deaths = custom["minecraft:deaths"] || 0;
+                mobKills = custom["minecraft:mob_kills"] || 0;
+                playerKills = custom["minecraft:player_kills"] || 0;
+              }
+              // --- ESKİ SÜRÜM (1.12 ve altı): düz anahtar ---
+              else if (content["stat.playOneMinute"] !== undefined || content["stat.deaths"] !== undefined) {
+                playTimeTicks = content["stat.playOneMinute"] || 0;
+                deaths = content["stat.deaths"] || 0;
+                mobKills = content["stat.mobKills"] || 0;
+                playerKills = content["stat.playerKills"] || 0;
+              }
+              // --- Çok Eski Sürüm (1.8 öncesi bazılar) ---
+              else if (content.stats) {
+                // Bazı sürümler istatistiği düz stats altında koyar (namespace'siz)
+                const s = content.stats;
+                playTimeTicks = s["play_time"] || s["play_one_minute"] || 0;
+                deaths = s["deaths"] || 0;
+                mobKills = s["mob_kills"] || 0;
+                playerKills = s["player_kills"] || 0;
+              }
+
+              // Ticks → Saat Çevrimi (1 saniye = 20 tick)
+              const playTimeHours = (playTimeTicks / 20 / 3600).toFixed(2);
+
+              stats.push({
+                name: name,
+                uuid: uuid,
+                playTime: parseFloat(playTimeHours),
+                deaths: deaths,
+                mobKills: mobKills,
+                playerKills: playerKills
               });
-          } catch(e) { console.log("Stats klasörü hatası:", e.message); }
-      } else {
-          // Klasör yoksa boş liste gönder
-          console.log("Stats klasörü bulunamadı:", statsDir);
-      }
 
-      // Veriyi Frontend'e Gönder
-      socket.emit("player-stats-data", stats);
+            } catch (err) { }
+          }
+        });
+      } catch (e) { }
+    }
+
+    // Veriyi Frontend'e Gönder
+    socket.emit("player-stats-data", stats);
   });
 });
 
-server.listen(PORT, () => console.log(`✅ Panel: http://localhost:${PORT}`));
+// ops.json temizleyici - Offline mod UUID uyumsuzluklarını ve mükerrer kayıtları temizler
+function cleanOpsJson() {
+  try {
+    const opsFilePath = path.join(MC_SERVER_PATH, "ops.json");
+    const userCachePath = path.join(MC_SERVER_PATH, "usercache.json");
+
+    if (!fs.existsSync(opsFilePath)) return;
+
+    let opsList = JSON.parse(fs.readFileSync(opsFilePath, "utf8"));
+    let cacheMap = {};
+
+    if (fs.existsSync(userCachePath)) {
+      try {
+        const cache = JSON.parse(fs.readFileSync(userCachePath, "utf8"));
+        cache.forEach(p => {
+          if (p.name && p.uuid) {
+            cacheMap[p.name.toLowerCase()] = p.uuid;
+          }
+        });
+      } catch (e) { }
+    }
+
+    const cleaned = [];
+    const seenNames = new Set();
+
+    // 1. Önce usercache'teki gerçek/çevrimdışı UUID ile eşleşen op kayıtlarını ekle (öncelikli)
+    opsList.forEach(op => {
+      if (!op.name) return;
+      const nameLower = op.name.toLowerCase();
+      const cachedUuid = cacheMap[nameLower];
+
+      if (cachedUuid && op.uuid === cachedUuid) {
+        cleaned.push(op);
+        seenNames.add(nameLower);
+      }
+    });
+
+    // 2. Kalan op kayıtlarını ekle (eğer isim daha önce eklenmemişse VE usercache'te kaydı yoksa)
+    opsList.forEach(op => {
+      if (!op.name) return;
+      const nameLower = op.name.toLowerCase();
+      const hasCache = cacheMap[nameLower] !== undefined;
+
+      if (!seenNames.has(nameLower) && !hasCache) {
+        cleaned.push(op);
+        seenNames.add(nameLower);
+      }
+    });
+
+    fs.writeFileSync(opsFilePath, JSON.stringify(cleaned, null, 2), "utf8");
+    console.log("[Panel] ops.json temizlendi.");
+  } catch (err) {
+    try {
+      fs.writeFileSync(path.join(__dirname, "clean_error.log"), err.stack);
+    } catch (e) { }
+    console.error("ops.json temizleme hatası:", err.message);
+  }
+}
+
+// İlk başlangıçta Java sürümlerini tarayalım
+console.log("[Panel] Java sürümleri taranıyor...");
+scanJavaVersions().then((list) => {
+  cachedJavaList = list;
+  console.log(`[Panel] Java sürümleri tarandı (${cachedJavaList.length} sürüm bulundu).`);
+}).catch(err => {
+  console.error("[Panel] ❌ Java ilk tarama hatası:", err);
+});
+
+// Başlangıçta ops.json temizliğini bir kez yap
+cleanOpsJson();
+
+server.listen(PORT, () => console.log(`[Panel] http://localhost:${PORT} adresinde hazır.`));

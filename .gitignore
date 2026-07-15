@@ -11,8 +11,12 @@ audit.json
 backups/
 clean/
 logs/
+temp_uploads/
 *.log
 npm-debug.log
+debug_nbt.json
+debug_stats.json
+
 
 # --- Sistem Dosyaları (Gereksiz) ---
 .DS_Store

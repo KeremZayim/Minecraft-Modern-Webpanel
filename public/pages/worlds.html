@@ -5,14 +5,23 @@
             <h2 class="text-xl font-bold text-gray-200 flex items-center gap-2">
                 <span class="text-2xl">🌍</span> Dünya Yöneticisi
             </h2>
-            <p class="text-xs text-gray-400">Sunucudaki dünyaları yönet, indir veya aktif et.</p>
+            <p class="text-xs text-gray-400">Sunucudaki dünyaları yönet, indir, sil veya yeni oluştur.</p>
         </div>
         
-        <label class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg cursor-pointer transition font-bold text-sm flex items-center gap-2 shadow-lg shadow-indigo-900/20">
-            <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-            <span>DÜNYA YÜKLE (.ZIP)</span>
-            <input type="file" id="world-upload-input" accept=".zip" class="hidden">
-        </label>
+        <div class="flex items-center gap-3 flex-wrap justify-center md:justify-end">
+            <!-- Yeni Dünya Oluştur Butonu -->
+            <button id="btn-create-world" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded-lg transition font-bold text-sm flex items-center gap-2 shadow-lg shadow-emerald-900/20">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                <span>YENİ DÜNYA</span>
+            </button>
+
+            <!-- Dünya Yükle Butonu -->
+            <label class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg cursor-pointer transition font-bold text-sm flex items-center gap-2 shadow-lg shadow-indigo-900/20">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                <span>DÜNYA YÜKLE (.ZIP)</span>
+                <input type="file" id="world-upload-input" accept=".zip" class="hidden">
+            </label>
+        </div>
     </div>
 
     <div id="world-upload-progress" class="hidden bg-gray-800 p-4 rounded-lg border border-indigo-500/50 flex items-center gap-3 animate-pulse">
@@ -22,6 +31,67 @@
 
     <div id="worlds-list" class="grid grid-cols-1 gap-3 overflow-y-auto pb-4">
         <div class="text-center text-gray-500 py-10">Yükleniyor...</div>
+    </div>
+
+    <!-- Yeni Dünya Oluştur Modal -->
+    <div id="create-world-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 bg-emerald-600/20 rounded-lg flex items-center justify-center text-xl">🌱</div>
+                <div>
+                    <h3 class="text-lg font-bold text-white">Yeni Dünya Oluştur</h3>
+                    <p class="text-xs text-gray-400">Sunucu dizininde boş bir dünya klasörü oluşturulur.</p>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Dünya Adı</label>
+                <input id="new-world-name" type="text" placeholder="örn: world_nether, skyblock" maxlength="48"
+                    class="w-full bg-gray-800 border border-gray-600 rounded-lg px-4 py-2.5 text-white text-sm focus:outline-none focus:border-emerald-500 transition placeholder-gray-500">
+                <p class="text-xs text-gray-500 mt-1">Boşluk kullanmayın. Yalnızca harf, rakam, _ ve - kabul edilir.</p>
+            </div>
+
+            <div class="flex gap-3 mt-6">
+                <button id="btn-create-world-cancel" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-lg font-bold text-sm transition border border-gray-700">İptal</button>
+                <button id="btn-create-world-confirm" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-lg font-bold text-sm transition">Oluştur</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dünyayı Sil Özel Onay Modalı -->
+    <div id="delete-world-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center">
+        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-8 w-full max-w-md shadow-2xl">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 bg-rose-600/20 rounded-lg flex items-center justify-center text-xl">⚠️</div>
+                <div>
+                    <h3 class="text-lg font-bold text-white">Dünyayı Sil</h3>
+                    <p class="text-xs text-gray-400">Bu işlem geri alınamaz!</p>
+                </div>
+            </div>
+
+            <div class="bg-gray-800/50 border border-gray-700 p-4 rounded-xl mb-6">
+                <p class="text-sm text-gray-300">
+                    <span id="delete-world-target-name" class="font-bold text-white break-all"></span> dünyası ve içindeki tüm dosyalar kalıcı olarak silinecektir.
+                </p>
+                <p id="delete-world-active-warning" class="hidden text-xs text-rose-400 font-bold mt-2 border border-rose-500/30 bg-rose-900/10 p-2 rounded">
+                    🚨 UYARI: Bu dünya şu an AKTİF dünyadır. Silindiğinde sunucu ayarlarındaki aktif dünya varsayılan 'world' olarak sıfırlanacaktır!
+                </p>
+            </div>
+
+            <!-- Sağa sola kaydırmalı toggle switch -->
+            <div class="flex items-center justify-between bg-gray-800/30 p-3 rounded-lg border border-gray-700 mb-6">
+                <span class="text-sm font-medium text-gray-300">Silmeden önce yedek alınsın mı?</span>
+                <label class="relative inline-flex items-center cursor-pointer select-none">
+                    <input type="checkbox" id="delete-world-backup-toggle" checked class="sr-only peer">
+                    <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+            </div>
+
+            <div class="flex gap-3">
+                <button id="btn-delete-world-cancel" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-lg font-bold text-sm transition border border-gray-700">İptal</button>
+                <button id="btn-delete-world-confirm" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white py-2.5 rounded-lg font-bold text-sm transition">Kalıcı Olarak Sil</button>
+            </div>
+        </div>
     </div>
 
 </div>

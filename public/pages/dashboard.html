@@ -1,6 +1,6 @@
 <div class="flex flex-col h-full gap-6 overflow-y-auto pr-2">
     
-    <div id="hero-card" class="relative bg-gradient-to-r from-gray-800 to-gray-900 p-6 rounded-2xl border border-gray-700 shadow-2xl overflow-hidden">
+    <div id="hero-card" class="flex-shrink-0 relative bg-gradient-to-r from-gray-800 to-gray-900 p-6 rounded-2xl border border-gray-700 shadow-2xl overflow-hidden">
         <div class="relative z-10 flex justify-between items-center">
             <div>
                 <h1 class="text-3xl font-black text-white tracking-tight mb-1">SUNUCU KONTROL PANELİ</h1>
@@ -33,6 +33,14 @@
                 <div id="dash-ram-bar" class="bg-purple-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
             </div>
             <p class="text-xs text-gray-500 text-right" id="dash-ram-percent">0%</p>
+            <div class="relative w-full h-20 mt-3">
+                <canvas id="chart-ram" class="w-full h-full"></canvas>
+                <div class="absolute right-1 top-0 bottom-0 flex flex-col justify-between text-[8px] text-gray-500 font-mono font-bold select-none pointer-events-none pb-1">
+                    <span>100%</span>
+                    <span>50%</span>
+                    <span>0%</span>
+                </div>
+            </div>
         </div>
 
         <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg relative overflow-hidden group">
@@ -49,6 +57,14 @@
                 <div id="dash-cpu-bar" class="bg-orange-500 h-2 rounded-full transition-all duration-500" style="width: 0%"></div>
             </div>
             <p class="text-xs text-gray-500 text-right">Anlık Çekirdek Kullanımı</p>
+            <div class="relative w-full h-20 mt-3">
+                <canvas id="chart-cpu" class="w-full h-full"></canvas>
+                <div class="absolute right-1 top-0 bottom-0 flex flex-col justify-between text-[8px] text-gray-500 font-mono font-bold select-none pointer-events-none pb-1">
+                    <span>100%</span>
+                    <span>50%</span>
+                    <span>0%</span>
+                </div>
+            </div>
         </div>
 
         <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg relative overflow-hidden group">
@@ -89,27 +105,63 @@
 
         <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg">
             <h3 class="text-xs font-bold text-gray-400 uppercase mb-4">SUNUCU BİLGİLERİ</h3>
-            <div class="space-y-3 text-sm">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-xs md:text-sm">
                 <div class="flex justify-between border-b border-gray-700 pb-2">
                     <span class="text-gray-500">Yazılım / Sürüm</span>
                     <span class="text-purple-400 font-bold font-mono" id="dash-version">Yükleniyor...</span>
-                </div>
-
-                <div class="flex justify-between border-b border-gray-700 pb-2">
-                    <span class="text-gray-500">Dosya Adı</span>
-                    <span class="text-white font-mono" id="dash-jar-name">server.jar</span>
                 </div>
                 <div class="flex justify-between border-b border-gray-700 pb-2">
                     <span class="text-gray-500">Bağlantı Portu</span>
                     <span class="text-white font-mono" id="dash-port">25565</span>
                 </div>
-                 <div class="flex justify-between pt-1">
+                <div class="flex justify-between border-b border-gray-700 pb-2">
+                    <span class="text-gray-500">Çalışma Süresi</span>
+                    <span class="text-emerald-400 font-bold font-mono" id="dash-uptime">00:00:00</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-700 pb-2">
+                    <span class="text-gray-500">Sunucu TPS</span>
+                    <span class="text-blue-400 font-bold font-mono" id="dash-tps">20.0</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-700 pb-2">
+                    <span class="text-gray-500">Dünya Boyutu</span>
+                    <span class="text-orange-400 font-bold font-mono" id="dash-world-size">0 MB</span>
+                </div>
+                <div class="flex justify-between border-b border-gray-700 pb-2">
+                    <span class="text-gray-500">Klasör Boyutu</span>
+                    <span class="text-white font-mono" id="dash-disk-space">0 MB</span>
+                </div>
+                <div class="flex justify-between pt-1 md:col-span-2">
                     <span class="text-gray-500">Son Yedek</span>
                     <span class="text-yellow-500 font-bold cursor-pointer hover:underline" onclick="loadPage('backups')">Yedeklere Git &rarr;</span>
                 </div>
             </div>
         </div>
 
+    </div>
+
+    <!-- SON HAREKETLER WIDGET'I -->
+    <div class="bg-gray-800 p-5 rounded-xl border border-gray-700 shadow-lg mt-6">
+        <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xs font-bold text-gray-400 uppercase">SON PANEL VE OYUN HAREKETLERİ</h3>
+            <span class="text-xs text-yellow-500 font-bold cursor-pointer hover:underline" onclick="loadPage('audit')">Tüm Kayıtlara Git &rarr;</span>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left text-xs">
+                <thead>
+                    <tr class="text-gray-500 border-b border-gray-700 uppercase">
+                        <th class="pb-2 font-semibold">Zaman</th>
+                        <th class="pb-2 font-semibold">Kaynak</th>
+                        <th class="pb-2 font-semibold">İşlem</th>
+                        <th class="pb-2 font-semibold">Detay</th>
+                    </tr>
+                </thead>
+                <tbody id="dash-audit-body" class="text-gray-300 divide-y divide-gray-700/50">
+                    <tr>
+                        <td colspan="4" class="py-4 text-center text-gray-500 italic">Yükleniyor...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
 </div>

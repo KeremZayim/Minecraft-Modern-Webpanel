@@ -1,28 +1,19 @@
-# 🎮 Minecraft Web Yönetim Paneli (v3.0 - Ultimate)
+# 🎮 Minecraft Web Yönetim Paneli
 
 Bu proje, Minecraft sunucunuzu web tarayıcısı üzerinden **tam kapsamlı, modern ve etkileşimli** bir şekilde yönetmenizi sağlayan, **Node.js** tabanlı gelişmiş bir yönetim panelidir.
 
-> **v3.0 Güncellemesi:** Modüler altyapı, Akıllı Konsol, Gelişmiş Dünya Yöneticisi ve İki Yönlü Discord Botu eklendi!
-> 👥 OYUNCU YÖNETİMİ:
-> - Online, Ops, Ban ve IP Ban listeleri sekmeli yapıya (Tabs) geçti.
-> - Anlık tepki veren (Optimistic UI) ekleme/silme butonları eklendi.
-> - Boş liste durumları için özel tasarımlar yapıldı.
-> 
-> 🌍 DÜNYA SİSTEMİ:
-> - .zip dünya yükleme ve indirme özelliği eklendi.
-> - Panel üzerinden aktif dünyayı seçme ve değiştirme özelliği geldi.
-> 
-> 🖥️ KONSOL:
-> - Tab tuşu ile komut/oyuncu tamamlama eklendi.
-> - Komut geçmişi ve akıllı öneri listesi geliştirildi.
-> 
-> 📂 SİSTEM:
-> - Config dosyaları '/config' klasörüne taşınarak düzenlendi.
-> - Kod yapısı modüler hale getirildi."
-
+> 🚀 **WebPanel V5 Güncellemesi (Yeni Sürüm):**
+> 👥 **Oyuncu Yönetimi:** Online, Tüm Oyuncular, Ops, Banlılar ve IP Ban listeleri gelişmiş sekmeli (Tabs) yapıya geçirildi.
+> 🎒 **Envanter Görüntüleyici:** Çevrimdışı/çevrimiçi oyuncuların envanter ve Ender Chest içerikleri görsel slotlar halinde çözümlenip listeleniyor.
+> 🧩 **Mod & Eklenti Mağazası:** Modrinth, Spiget ve DevBukkit entegrasyonu ile panelden doğrudan eklenti arama ve tek tıkla yükleme eklendi.
+> ☕ **Java Sürüm Seçici:** Sistemdeki Java sürümleri otomatik taranıp ayarlardan kolayca değiştirilebilir hale getirildi.
+> 📦 **Kaynak Paketi (Resource Pack):** Sunucu için .zip paketi yükleme, SHA-1 otomatik hesaplama ve silme eklendi.
+> 🌍 **Dünya Yöneticisi:** Panelden yeni dünya oluşturma ve silerken yedekleme alma desteği sağlandı.
+> 📈 **Performans Grafikleri:** Chart.js ile CPU/RAM geçmişi ve regex ile konsoldan anlık TPS izleme eklendi.
+ 
 ## ✨ Yeni ve Temel Özellikler
-
-### 🔥 Öne Çıkan Yenilikler (v3.0)
+ 
+### 🔥 Öne Çıkan Yenilikler
 * **🧠 Akıllı Konsol:** Minecraft komutları ve oyuncu isimleri için **TAB ile otomatik tamamlama**, komut geçmişi (yukarı/aşağı ok) ve çok seçenekli öneri kutusu.
 * **🌍 Gelişmiş Dünya Yöneticisi:**
     * **Yükle:** Kendi haritanızı `.zip` olarak sürükleyip bırakın.
@@ -38,7 +29,7 @@ Bu proje, Minecraft sunucunuzu web tarayıcısı üzerinden **tam kapsamlı, mod
 
 ### ⚙️ Temel Özellikler
 * **📂 Dosya Yöneticisi:** Web üzerinden dosya düzenleme, silme, oluşturma ve yükleme.
-* **🧩 Eklenti (Plugin) Yöneticisi:** Marketten (Modrinth/Spiget) veya dosya yükleyerek plugin kurma, açma/kapama.
+* **🧩 Eklenti (Plugin) Yöneticisi:** Marketten (Modrinth/Spiget/DevBukkit) veya dosya yükleyerek plugin kurma, açma/kapama.
 * **💾 Yedekleme Sistemi:** Sunucu açıkken bile güvenli (Hot Backup) yedek alma ve geri yükleme.
 * **⏱️ Zamanlayıcı (Cron):** Otomatik restart, komut gönderme veya yedekleme görevleri.
 * **📋 Denetim Kaydı (Audit):** Panel üzerindeki tüm işlemlerin (IP, Tarih, İşlem) kaydı.
@@ -89,7 +80,7 @@ Masaüstü/
     ```bash
     node server.js
     ```
-3. Tarayıcınızdan şu adrese gidin: http://localhost:3000
+3. Tarayıcınızdan şu adrese gidin: http://localhost:1717 (Panel varsayılan olarak **1717** portunu kullanmaktadır.)
 
 ## 🧩 Discord Entegrasyonu Nasıl Yapılır?
 
@@ -119,6 +110,26 @@ Projeyi indiren birisi sadece şunlara dikkat etmeli:
 2.  **Klasör Adı:** `server.js` içindeki `const SERVER_FOLDER_NAME = 'mc-server';` satırı, yan taraftaki klasörün adıyla **birebir aynı** olmalıdır.
 3.  **Jar Adı:** Sunucu dosyasının adı `server.jar` olmalıdır (veya koddan değiştirilmelidir).
 4.  **Kurulum:** `npm install` komutu ile kütüphaneleri indirmelidir.
+
+## 📖 Sürüm Değişiklik Günlüğü (Changelog)
+
+<details>
+  <summary><b>🛠️ WebPanel V5 Güncelleme Detaylarını Göster (Tıkla Aç)</b></summary>
+
+### 🚀 Yeni Özellikler & Geliştirmeler
+
+* **👥 Sekmeli Oyuncu Yönetimi:** Online, Tüm Oyuncular, Ops, Banlılar, IP Banlılar ve İstatistikler sekmeleri eklendi. Oyuncu ismi önerme desteği sağlandı.
+* **🎒 Çevrimdışı Oyuncu Envanter Görüntüleyici:** Oyuncu `.dat` dosyaları (NBT) çözümlenerek envanter, zırh, ikincil el (off-hand) ve Ender Chest içerikleri görsel slotlar halinde modala döküldü (Minecraft 1.20.5+ dahil).
+* **📊 Liderlik Tabloları:** En çok oynayanlar, en çok yaratık öldürenler ve en çok ölenler istatistikleri taranarak sıralandı.
+* **🧩 Mod & Eklenti Mağazası:** Modrinth, Spiget ve DevBukkit API entegrasyonu ile panel üzerinden doğrudan eklenti/mod arama ve yükleme özelliği getirildi.
+* **🖥️ Sunucu Yazılım & Sürüm Yöneticisi:** Paper, Spigot ve CraftBukkit için kararlı/deneysel sürüm tespiti ve otomatik kurulum sistemi kuruldu.
+* **☕ Dinamik Java Sürüm Seçici:** Sistemdeki yüklü Java yollarını otomatik tarayan ve ayarlardan tek tıkla seçebilmeyi sağlayan sistem entegre edildi.
+* **📦 Kaynak Paketi (Resource Pack) Yönetimi:** Kaynak paketi yükleme, indirme, SHA-1 kodunun otomatik hesaplanarak `server.properties`'e işlenmesi ve silinmesi eklendi.
+* **🌍 Dünya Yönetimi Yenilikleri:** Yeni dünya oluşturma modalı, silerken önce yedekleme seçeneği ve sürükle-bırak zip yükleme desteği eklendi.
+* **📈 Performans & TPS İzleme:** Chart.js grafikleriyle CPU/RAM izleme ve konsol loglarından anlık TPS değerini regex ile yakalama sistemi kuruldu.
+* **⚙️ Güvenlik & İyileştirmeler:** `ops.json` temizleyici (`cleanOpsJson`) ile UUID mükerrer kayıtları düzeltildi, denetim günlüklerine sayfalandırma (pagination) ve Excel dışa aktarım desteği (SheetJS) eklendi. `.gitignore` güncellenerek hassas veriler koruma altına alındı.
+
+</details>
 
 ## Panel Resimleri
 
